@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: spendwise
+    env: node
+    plan: free
+    buildCommand: npm ci && npm run build && npm run migrate
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: spendwise-db
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: APP_URL
+        value: https://spendwise.onrender.com
+      - key: NODE_ENV
+        value: production
+      - key: DB_DRIVER
+        value: postgres
+
+databases:
+  - name: spendwise-db
+    plan: free
+

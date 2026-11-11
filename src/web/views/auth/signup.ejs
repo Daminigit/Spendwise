@@ -1,0 +1,30 @@
+<section class="card narrow">
+  <% if (invite && orgName) { %>
+    <h1>Join <%= orgName %></h1>
+    <p class="muted">You've been invited as <strong><%= invite.role %></strong>.</p>
+  <% } else { %>
+    <h1>Create your organisation</h1>
+    <p class="muted">You'll be the admin. Invite your team afterwards.</p>
+  <% } %>
+  <% if (inviteInvalid) { %><div class="flash flash-error" role="alert">This invite link is invalid or has expired. Ask your admin for a new one.</div><% } %>
+  <% if (error) { %><div class="flash flash-error" role="alert"><%= error %></div><% } %>
+  <form method="post" action="/signup" class="form">
+    <% if (inviteToken) { %><input type="hidden" name="invite" value="<%= inviteToken %>"><% } %>
+    <% if (!invite) { %>
+      <label>Company name
+        <input type="text" name="orgName" value="<%= form.orgName || '' %>" required maxlength="120" autocomplete="organization">
+      </label>
+    <% } %>
+    <label>Your name
+      <input type="text" name="name" value="<%= form.name || '' %>" required maxlength="100" autocomplete="name">
+    </label>
+    <label>Work email
+      <input type="email" name="email" value="<%= form.email || '' %>" required autocomplete="email">
+    </label>
+    <label>Password <span class="muted small">(8+ characters)</span>
+      <input type="password" name="password" minlength="8" required autocomplete="new-password">
+    </label>
+    <button class="btn btn-primary btn-block" type="submit" <%= inviteInvalid ? 'disabled' : '' %>><%= invite ? 'Join' : 'Create organisation' %></button>
+  </form>
+  <p class="muted small">Already have an account? <a href="/login">Log in</a>.</p>
+</section>

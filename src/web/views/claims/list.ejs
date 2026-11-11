@@ -1,0 +1,55 @@
+<div class="page-head">
+  <h1>My claims</h1>
+  <details class="new-claim">
+    <summary class="btn btn-primary">New claim</summary>
+    <form method="post" action="/claims" class="form card">
+      <label>Title <input type="text" name="title" required maxlength="200" placeholder="Bangalore client visit"></label>
+      <label>Purpose <input type="text" name="purpose" maxlength="500" placeholder="Optional"></label>
+      <div class="row">
+        <label>Trip start <input type="date" name="trip_start"></label>
+        <label>Trip end <input type="date" name="trip_end"></label>
+      </div>
+      <button class="btn btn-primary" type="submit">Create draft</button>
+      <p class="muted small">Tip: it's faster to send receipts to Claude and say “log these”.</p>
+    </form>
+  </details>
+</div>
+
+<form method="get" action="/claims" class="filters" data-autosubmit>
+  <label class="inline">Status
+    <select name="status">
+      <option value="">All</option>
+      <% statuses.forEach(s => { %>
+        <option value="<%= s %>" <%= s === status ? 'selected' : '' %>><%= statusLabel(s) %></option>
+      <% }) %>
+    </select>
+  </label>
+  <noscript><button class="btn btn-sm" type="submit">Filter</button></noscript>
+</form>
+
+<% if (claims.length === 0) { %>
+  <div class="card empty">
+    <h2>No claims <%= status ? 'with this status' : 'yet' %></h2>
+    <p class="muted">Connect Claude in <a href="/settings/connect">Settings → Connect Claude</a>, send it your receipt photos and say “log these”.</p>
+  </div>
+<% } else { %>
+  <ul class="claim-cards">
+    <% claims.forEach(c => { %>
+      <li>
+        <a class="card claim-card" href="/claims/<%= c.id %>">
+          <div class="claim-card-top">
+            <span class="claim-title"><%= c.title %></span>
+            <%- include('../partials/status', { s: c.status }) %>
+          </div>
+          <div class="claim-card-meta">
+            <span class="amount"><%= formatINR(c.totalMinor) %></span>
+            <span class="muted"><%= c.expenseCount %> line<%= c.expenseCount === 1 ? '' : 's' %></span>
+            <% if (c.flagCount > 0) { %><span class="badge flag"><%= c.flagCount %> flag<%= c.flagCount === 1 ? '' : 's' %></span><% } %>
+            <% if (c.source === 'claude') { %><span class="badge source">via Claude</span><% } %>
+            <span class="muted small"><%= formatDate(c.submittedAt || c.createdAt) %></span>
+          </div>
+        </a>
+      </li>
+    <% }) %>
+  </ul>
+<% } %>

@@ -1,0 +1,55 @@
+<div class="page-head"><h1>Approvals</h1></div>
+
+<section class="section">
+  <h2>Waiting for you <span class="muted">(<%= pending.length %>)</span></h2>
+  <% if (pending.length === 0) { %>
+    <div class="card empty"><p class="muted">Nothing to approve. 🎉</p></div>
+  <% } else { %>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>Submitted</th><th>Employee</th><th>Claim</th><th class="num">Lines</th><th>Flags</th><th class="num">Total</th></tr></thead>
+        <tbody>
+          <% pending.forEach(c => { %>
+            <tr>
+              <td><%= formatDate(c.submittedAt) %></td>
+              <td><%= c.user.name %></td>
+              <td><a href="/claims/<%= c.id %>#decide"><%= c.title %></a><% if (c.source === 'claude') { %> <span class="badge source">via Claude</span><% } %></td>
+              <td class="num"><%= c.expenseCount %></td>
+              <td><% if (c.flagCount > 0) { %><span class="badge flag"><%= c.flagCount %></span><% } else { %><span class="muted">—</span><% } %></td>
+              <td class="num"><%= formatINR(c.totalMinor) %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</section>
+
+<% if (user.role === 'admin') { %>
+  <section class="section">
+    <h2>Approved, awaiting payment <span class="muted">(<%= awaitingPayment.length %>)</span></h2>
+    <% if (awaitingPayment.length === 0) { %>
+      <div class="card empty"><p class="muted">No approved claims waiting to be paid.</p></div>
+    <% } else { %>
+      <form method="post" action="/approvals/mark-paid" data-confirm="Mark the selected claims as paid?">
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th><input type="checkbox" data-check-all="ids" aria-label="Select all"></th><th>Employee</th><th>Claim</th><th>Status</th><th class="num">Approved amount</th></tr></thead>
+            <tbody>
+              <% awaitingPayment.forEach(c => { %>
+                <tr>
+                  <td><input type="checkbox" name="ids" value="<%= c.id %>" aria-label="Select <%= c.title %>"></td>
+                  <td><%= c.user.name %></td>
+                  <td><a href="/claims/<%= c.id %>"><%= c.title %></a></td>
+                  <td><%- include('../partials/status', { s: c.status }) %></td>
+                  <td class="num"><%= formatINR(c.totalMinor) %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+        <div class="form-actions"><button class="btn btn-primary" type="submit">Mark selected as paid</button></div>
+      </form>
+    <% } %>
+  </section>
+<% } %>

@@ -1,0 +1,9 @@
+<nav class="tabs" aria-label="Settings">
+  <% [
+       { href: '/settings/connect', label: 'Connect Claude', show: true },
+       { href: '/settings/policy', label: 'Policy', show: true },
+       { href: '/settings/team', label: 'Team', show: user.role === 'admin' },
+     ].filter(t => t.show).forEach(t => { %>
+    <a href="<%= t.href %>" class="<%= currentPath === t.href ? 'active' : '' %>" <%- currentPath === t.href ? 'aria-current="page"' : '' %>><%= t.label %></a>
+  <% }) %>
+</nav>

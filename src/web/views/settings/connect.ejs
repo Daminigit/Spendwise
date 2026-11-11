@@ -1,0 +1,61 @@
+<h1>Settings</h1>
+<%- include('../partials/settings-nav') %>
+
+<% if (newToken) { %>
+  <section class="card highlight" id="new-token">
+    <h2>Your new connector URL</h2>
+    <p class="muted small">Copy it now — for your security it won't be shown again. Anyone with this URL can act as you in Spendwise.</p>
+    <div class="copy-row">
+      <input type="text" readonly value="<%= newToken.url %>" id="connector-url" class="mono" aria-label="Connector URL">
+      <button class="btn btn-primary" type="button" data-copy="#connector-url">Copy</button>
+    </div>
+  </section>
+<% } %>
+
+<section class="section">
+  <h2>Add Spendwise to Claude</h2>
+  <ol class="howto">
+    <li>Generate a connector URL below and copy it.</li>
+    <li>In Claude, open <strong>Settings → Connectors</strong> and choose <strong>Add custom connector</strong>.</li>
+    <li>Name it <em>Spendwise</em>, paste the URL, and save.</li>
+    <li>In a new chat, attach your receipt photos and say <em>“Log these receipts for my Bangalore trip, 3–5 Nov.”</em></li>
+    <li>Claude creates a draft claim and tells you what was flagged. Open the link it gives you to review and submit.</li>
+  </ol>
+</section>
+
+<section class="section">
+  <h2>Your connector tokens</h2>
+  <form method="post" action="/settings/connect" class="filters">
+    <input type="hidden" name="action" value="create">
+    <label class="inline">Label <input type="text" name="label" maxlength="60" placeholder="e.g. Claude desktop"></label>
+    <button class="btn btn-primary btn-sm" type="submit">Generate connector URL</button>
+  </form>
+  <% if (tokens.length === 0) { %>
+    <div class="card empty"><p class="muted">No tokens yet.</p></div>
+  <% } else { %>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>Label</th><th>Created</th><th>Last used</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          <% tokens.forEach(t => { %>
+            <tr>
+              <td><%= t.label %></td>
+              <td><%= formatDate(t.createdAt) %></td>
+              <td><%= t.lastUsedAt ? formatDateTime(t.lastUsedAt) : 'Never' %></td>
+              <td><% if (t.revokedAt) { %><span class="badge status-rejected">Revoked</span><% } else { %><span class="badge status-approved">Active</span><% } %></td>
+              <td>
+                <% if (!t.revokedAt) { %>
+                  <form method="post" action="/settings/connect" data-confirm="Revoke this token? Claude will lose access through it immediately.">
+                    <input type="hidden" name="action" value="revoke">
+                    <input type="hidden" name="tokenId" value="<%= t.id %>">
+                    <button class="btn-link danger" type="submit">Revoke</button>
+                  </form>
+                <% } %>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</section>

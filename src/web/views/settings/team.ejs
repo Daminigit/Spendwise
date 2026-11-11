@@ -1,0 +1,56 @@
+<h1>Settings</h1>
+<%- include('../partials/settings-nav') %>
+<% const roles = ['employee', 'manager', 'admin']; const managers = members.filter(m => m.role !== 'employee'); %>
+
+<section class="section" id="invite">
+  <h2>Invite a member</h2>
+  <% if (inviteLink) { %>
+    <div class="card highlight">
+      <p>Share this link with your new <strong><%= inviteLink.role %></strong>. It works for anyone who has it until <%= formatDateTime(new Date(inviteLink.expiresAt)) %>.</p>
+      <div class="copy-row">
+        <input type="text" readonly value="<%= inviteLink.url %>" id="invite-url" class="mono" aria-label="Invite link">
+        <button class="btn btn-primary" type="button" data-copy="#invite-url">Copy</button>
+      </div>
+    </div>
+  <% } %>
+  <form method="post" action="/settings/team" class="filters">
+    <input type="hidden" name="action" value="invite">
+    <label class="inline">Role
+      <select name="role"><% roles.forEach(r => { %><option value="<%= r %>"><%= r %></option><% }) %></select>
+    </label>
+    <label class="inline">Reports to
+      <select name="managerId">
+        <option value="">— nobody —</option>
+        <% managers.forEach(m => { %><option value="<%= m.id %>"><%= m.name %></option><% }) %>
+      </select>
+    </label>
+    <button class="btn btn-primary btn-sm" type="submit">Create invite link</button>
+  </form>
+</section>
+
+<section class="section">
+  <h2>Members <span class="muted">(<%= members.length %>)</span></h2>
+  <ul class="members">
+    <% members.forEach(m => { %>
+      <li class="card member">
+        <div>
+          <strong><%= m.name %></strong><%= m.id === user.id ? ' (you)' : '' %><br>
+          <span class="muted small"><%= m.email %></span>
+        </div>
+        <form method="post" action="/settings/team" class="member-form">
+          <input type="hidden" name="memberId" value="<%= m.id %>">
+          <label class="inline">Role
+            <select name="role"><% roles.forEach(r => { %><option value="<%= r %>" <%= r === m.role ? 'selected' : '' %>><%= r %></option><% }) %></select>
+          </label>
+          <label class="inline">Reports to
+            <select name="managerId">
+              <option value="">— nobody —</option>
+              <% managers.filter(x => x.id !== m.id).forEach(x => { %><option value="<%= x.id %>" <%= x.id === m.managerId ? 'selected' : '' %>><%= x.name %></option><% }) %>
+            </select>
+          </label>
+          <button class="btn btn-sm" type="submit">Save</button>
+        </form>
+      </li>
+    <% }) %>
+  </ul>
+</section>

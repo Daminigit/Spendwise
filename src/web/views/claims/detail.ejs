@@ -1,0 +1,198 @@
+<%
+  const isMine = claim.userId === user.id;
+  const actionLabels = { create: 'Created', add_expenses: 'Added lines', submit: 'Submitted', decide: 'Decided', mark_paid: 'Marked paid' };
+  const catOptions = (selectedId) => categories.map(c =>
+    `<option value="${c.code}" ${c.id === selectedId ? 'selected' : ''}>${c.name.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch])}</option>`
+  ).join('');
+%>
+<p class="crumbs"><a href="<%= isMine ? '/claims' : '/approvals' %>">← <%= isMine ? 'My claims' : 'Approvals' %></a></p>
+
+<div class="page-head">
+  <div>
+    <h1><%= claim.title %> <%- include('../partials/status', { s: claim.status }) %></h1>
+    <p class="muted">
+      <%= claim.user.name %><%= isMine ? ' (you)' : '' %>
+      <% if (claim.tripStart) { %> · Trip <%= formatDate(claim.tripStart) %> – <%= formatDate(claim.tripEnd) %><% } %>
+      <% if (claim.source === 'claude') { %> · <span class="badge source">via Claude</span><% } %>
+    </p>
+    <% if (claim.purpose) { %><p><%= claim.purpose %></p><% } %>
+  </div>
+  <div class="actions">
+    <% if (perms.canSubmit) { %>
+      <form method="post" action="/claims/<%= claim.id %>/submit" data-confirm="Submit this claim for approval? You won't be able to edit it afterwards.">
+        <button class="btn btn-primary" type="submit">Submit for approval</button>
+      </form>
+    <% } %>
+    <% if (perms.canMarkPaid) { %>
+      <form method="post" action="/claims/<%= claim.id %>/mark-paid" data-confirm="Mark this claim as paid?">
+        <button class="btn btn-primary" type="submit">Mark as paid</button>
+      </form>
+    <% } %>
+  </div>
+</div>
+
+<section class="totals card" aria-label="Totals">
+  <div><span class="muted small">Total</span><strong data-live-total="amount"><%= formatINR(claim.totals.grossMinor) %></strong></div>
+  <div><span class="muted small">Taxable</span><span data-live-total="taxable_amount"><%= formatINR(claim.totals.taxableMinor) %></span></div>
+  <div><span class="muted small">CGST</span><span data-live-total="cgst"><%= formatINR(claim.totals.cgstMinor) %></span></div>
+  <div><span class="muted small">SGST</span><span data-live-total="sgst"><%= formatINR(claim.totals.sgstMinor) %></span></div>
+  <div><span class="muted small">IGST</span><span data-live-total="igst"><%= formatINR(claim.totals.igstMinor) %></span></div>
+</section>
+
+<section class="section">
+  <h2>Lines</h2>
+  <% if (claim.expenses.length === 0) { %>
+    <div class="card empty"><p class="muted">No lines yet.<%= perms.canAddLines ? ' Add one below, or ask Claude to add receipts to this claim.' : '' %></p></div>
+  <% } else if (perms.canEdit) { %>
+    <form method="post" action="/claims/<%= claim.id %>/edit" id="edit-form" data-live-totals>
+      <div class="lines">
+        <% claim.expenses.forEach((e, i) => { %>
+          <fieldset class="card line line-<%= e.status %>">
+            <legend class="sr-only">Line <%= i + 1 %></legend>
+            <input type="hidden" name="lines[<%= i %>][id]" value="<%= e.id %>">
+            <input type="hidden" name="lines[<%= i %>][receipt_url]" value="<%= e.receiptUrl || '' %>" data-receipt-url>
+            <div class="line-head">
+              <span class="line-num">#<%= i + 1 %></span>
+              <% e.flags.forEach(f => { %><span class="badge flag" title="<%= f %>"><%= flagLabel(f) %></span><% }) %>
+              <% if (e.status !== 'pending') { %><%- include('../partials/status', { s: e.status }) %><% } %>
+            </div>
+            <div class="grid">
+              <label>Date <input type="date" name="lines[<%= i %>][date]" value="<%= e.date %>" required></label>
+              <label class="span-2">Merchant <input type="text" name="lines[<%= i %>][merchant]" value="<%= e.merchant %>" required maxlength="200"></label>
+              <label>Category <select name="lines[<%= i %>][category]"><%- catOptions(e.categoryId) %></select></label>
+              <label>Amount ₹ <input type="text" inputmode="decimal" name="lines[<%= i %>][amount]" value="<%= rupeeInput(e.amountMinor) %>" data-money="amount" required></label>
+              <label>Paid by
+                <select name="lines[<%= i %>][payment_method]">
+                  <% PAYMENT_METHODS.forEach(m => { %><option value="<%= m.value %>" <%= m.value === e.paymentMethod ? 'selected' : '' %>><%= m.label %></option><% }) %>
+                </select>
+              </label>
+              <label class="span-2">Description <input type="text" name="lines[<%= i %>][description]" value="<%= e.description %>" maxlength="500"></label>
+              <label class="span-2">GSTIN <input type="text" name="lines[<%= i %>][gstin]" value="<%= e.gstin || '' %>" maxlength="15" class="mono" autocapitalize="characters"></label>
+              <label>Taxable ₹ <input type="text" inputmode="decimal" name="lines[<%= i %>][taxable_amount]" value="<%= rupeeInput(e.taxableMinor) %>" data-money="taxable_amount"></label>
+              <label>CGST ₹ <input type="text" inputmode="decimal" name="lines[<%= i %>][cgst]" value="<%= rupeeInput(e.cgstMinor) %>" data-money="cgst"></label>
+              <label>SGST ₹ <input type="text" inputmode="decimal" name="lines[<%= i %>][sgst]" value="<%= rupeeInput(e.sgstMinor) %>" data-money="sgst"></label>
+              <label>IGST ₹ <input type="text" inputmode="decimal" name="lines[<%= i %>][igst]" value="<%= rupeeInput(e.igstMinor) %>" data-money="igst"></label>
+            </div>
+            <div class="dropzone" data-dropzone data-expense-id="<%= e.id %>">
+              <% if (e.receiptUrl) { %>
+                <a href="<%= e.receiptUrl %>" target="_blank" rel="noopener" data-receipt-link>View receipt</a> ·
+              <% } else { %>
+                <span data-receipt-link class="muted">No receipt</span> ·
+              <% } %>
+              <label class="btn-link">Upload<input type="file" accept="image/*,application/pdf" hidden data-receipt-input></label>
+              <span class="muted small">or drop a file here</span>
+              <span class="small" data-upload-status aria-live="polite"></span>
+            </div>
+            <% if (e.reviewerNote) { %><p class="note"><strong>Reviewer:</strong> <%= e.reviewerNote %></p><% } %>
+          </fieldset>
+        <% }) %>
+      </div>
+      <div class="form-actions"><button class="btn" type="submit">Save changes</button></div>
+    </form>
+  <% } else { %>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>Date</th><th>Merchant</th><th>Category</th><th class="num">Amount</th><th>GSTIN</th><th>Receipt</th><th>Status</th></tr></thead>
+        <tbody>
+          <% claim.expenses.forEach(e => { %>
+            <tr class="line-<%= e.status %>">
+              <td><%= formatDate(e.date) %></td>
+              <td><%= e.merchant %><% if (e.description) { %><br><span class="muted small"><%= e.description %></span><% } %>
+                <div><% e.flags.forEach(f => { %><span class="badge flag"><%= flagLabel(f) %></span><% }) %></div>
+                <% if (e.reviewerNote) { %><div class="note small"><strong>Reviewer:</strong> <%= e.reviewerNote %></div><% } %>
+              </td>
+              <td><%= e.categoryName %></td>
+              <td class="num"><%= formatINR(e.amountMinor) %></td>
+              <td class="mono small"><%= e.gstin || '—' %></td>
+              <td><% if (e.receiptUrl) { %><a href="<%= e.receiptUrl %>" target="_blank" rel="noopener">View</a><% } else { %>—<% } %></td>
+              <td><%- include('../partials/status', { s: e.status }) %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</section>
+
+<% if (perms.canAddLines) { %>
+  <section class="section">
+    <details class="card" <%= claim.expenses.length === 0 ? 'open' : '' %>>
+      <summary><strong>Add a line</strong></summary>
+      <form method="post" action="/claims/<%= claim.id %>/lines" class="form grid">
+        <label>Date <input type="date" name="date" value="<%= claim.tripStart || today %>" required></label>
+        <label class="span-2">Merchant <input type="text" name="merchant" required maxlength="200"></label>
+        <label>Category <select name="category"><%- catOptions(null) %></select></label>
+        <label>Amount ₹ <input type="text" inputmode="decimal" name="amount" required placeholder="1250.00"></label>
+        <label>Paid by
+          <select name="payment_method"><% PAYMENT_METHODS.forEach(m => { %><option value="<%= m.value %>"><%= m.label %></option><% }) %></select>
+        </label>
+        <label class="span-2">Description <input type="text" name="description" maxlength="500"></label>
+        <label class="span-2">GSTIN <input type="text" name="gstin" maxlength="15" class="mono" autocapitalize="characters"></label>
+        <label>Taxable ₹ <input type="text" inputmode="decimal" name="taxable_amount"></label>
+        <label>CGST ₹ <input type="text" inputmode="decimal" name="cgst"></label>
+        <label>SGST ₹ <input type="text" inputmode="decimal" name="sgst"></label>
+        <label>IGST ₹ <input type="text" inputmode="decimal" name="igst"></label>
+        <div class="span-all"><button class="btn btn-primary" type="submit">Add line</button></div>
+      </form>
+    </details>
+  </section>
+<% } %>
+
+<% if (perms.canDecide && claim.expenses.length > 0) { %>
+  <section class="section" id="decide">
+    <h2>Decision</h2>
+    <form method="post" action="/approvals/<%= claim.id %>/decide" class="card form">
+      <p class="muted small">Edit any line above first (e.g. change its category) and save, then decide each line.</p>
+      <ul class="decisions">
+        <% claim.expenses.forEach((e, i) => { %>
+          <li>
+            <div class="decision-line">
+              <span>#<%= i + 1 %> <%= e.merchant %> · <strong><%= formatINR(e.amountMinor) %></strong>
+                <% e.flags.forEach(f => { %><span class="badge flag"><%= flagLabel(f) %></span><% }) %>
+              </span>
+              <span class="segmented">
+                <label><input type="radio" name="decisions[<%= e.id %>]" value="approve" checked> Approve</label>
+                <label><input type="radio" name="decisions[<%= e.id %>]" value="reject"> Reject</label>
+              </span>
+            </div>
+            <input type="text" name="notes[<%= e.id %>]" placeholder="Note (required when rejecting)" maxlength="1000">
+          </li>
+        <% }) %>
+      </ul>
+      <label>Overall note <input type="text" name="note" maxlength="1000" placeholder="Optional"></label>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit" name="action" value="apply">Apply decisions</button>
+        <button class="btn" type="submit" name="action" value="approve_all">Approve all</button>
+      </div>
+    </form>
+  </section>
+<% } %>
+
+<div class="two-col section">
+  <section id="comments">
+    <h2>Comments</h2>
+    <% if (claim.comments.length === 0) { %><p class="muted">No comments yet.</p><% } %>
+    <ul class="comments">
+      <% claim.comments.forEach(c => { %>
+        <li class="card"><p class="small"><strong><%= c.userName %></strong> <span class="muted"><%= formatDateTime(c.createdAt) %></span></p><p class="pre"><%= c.body %></p></li>
+      <% }) %>
+    </ul>
+    <form method="post" action="/claims/<%= claim.id %>/comments" class="form">
+      <label class="sr-only" for="comment-body">Comment</label>
+      <textarea id="comment-body" name="body" rows="3" maxlength="2000" required placeholder="Add a comment"></textarea>
+      <button class="btn" type="submit">Comment</button>
+    </form>
+  </section>
+  <section>
+    <h2>History</h2>
+    <ol class="history">
+      <% claim.history.forEach(h => { %>
+        <li>
+          <strong><%= actionLabels[h.action] || h.action %></strong>
+          <% if (h.after && h.after.status) { %> → <%= statusLabel(String(h.after.status)) %><% } %>
+          <span class="muted small">· <%= h.actorUserId === claim.userId ? claim.user.name : h.actorUserId === user.id ? 'you' : 'approver' %> via <%= h.actorVia === 'mcp' ? 'Claude' : 'web' %> · <%= formatDateTime(h.createdAt) %></span>
+        </li>
+      <% }) %>
+    </ol>
+  </section>
+</div>

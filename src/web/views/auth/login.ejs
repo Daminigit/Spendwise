@@ -1,0 +1,16 @@
+<section class="card narrow">
+  <h1>Log in</h1>
+  <% if (error) { %><div class="flash flash-error" role="alert"><%= error %></div><% } %>
+  <form method="post" action="/login" class="form">
+    <input type="hidden" name="next" value="<%= next %>">
+    <label>Email
+      <input type="email" name="email" value="<%= email %>" autocomplete="email" required autofocus>
+    </label>
+    <label>Password
+      <input type="password" name="password" autocomplete="current-password" required>
+    </label>
+    <button class="btn btn-primary btn-block" type="submit">Log in</button>
+  </form>
+  <p class="muted small">New here? <a href="/signup">Create an organisation</a>.</p>
+  <p class="muted small">Demo: <code>riya@acme.test</code> / <code>demo1234</code></p>
+</section>

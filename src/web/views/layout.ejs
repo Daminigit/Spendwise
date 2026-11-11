@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en-IN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= title %><%= title === 'Spendwise' || title.startsWith('Spendwise') ? '' : ' · Spendwise' %></title>
+  <link rel="stylesheet" href="/public/styles.css">
+  <script src="/public/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="<%= user ? '/claims' : '/' %>"><span class="brand-mark">₹</span> Spendwise</a>
+      <% if (user) { %>
+        <% const nav = [
+             { href: '/claims', label: 'My claims', show: true },
+             { href: '/approvals', label: 'Approvals', show: user.role !== 'employee' },
+             { href: '/reports', label: 'Reports', show: user.role !== 'employee' },
+             { href: '/settings/connect', label: 'Settings', show: true, match: '/settings' },
+           ]; %>
+        <nav class="nav" aria-label="Main">
+          <% nav.filter(n => n.show).forEach(n => { const active = currentPath.startsWith(n.match || n.href); %>
+            <a href="<%= n.href %>" class="<%= active ? 'active' : '' %>" <%- active ? 'aria-current="page"' : '' %>><%= n.label %></a>
+          <% }) %>
+        </nav>
+        <div class="user-badge">
+          <span class="avatar" aria-hidden="true"><%= user.name.trim().charAt(0).toUpperCase() %></span>
+          <span class="user-meta"><span class="user-name"><%= user.name %></span><span class="role role-<%= user.role %>"><%= user.role %></span></span>
+          <form method="post" action="/logout"><button class="btn-link" type="submit">Log out</button></form>
+        </div>
+      <% } else { %>
+        <nav class="nav nav-public">
+          <a href="/login">Log in</a>
+          <a class="btn btn-primary btn-sm" href="/signup">Start free</a>
+        </nav>
+      <% } %>
+    </div>
+  </header>
+
+  <main class="container">
+    <% (flash || []).forEach(f => { %>
+      <div class="flash flash-<%= f.type %>" role="<%= f.type === 'error' ? 'alert' : 'status' %>"><%= f.message %></div>
+    <% }) %>
+    <%- body %>
+  </main>
+
+  <footer class="footer">
+    <div class="container">Spendwise · expense claims for small teams, run from Claude. Spendwise never calls an AI API — your Claude reads the receipts.</div>
+  </footer>
+</body>
+</html>

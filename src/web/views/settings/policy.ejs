@@ -1,0 +1,58 @@
+<h1>Settings</h1>
+<%- include('../partials/settings-nav') %>
+<% const ro = canEdit ? '' : 'disabled'; %>
+
+<% if (!canEdit) { %><p class="muted">Only admins can change the policy. This is what Spendwise checks your claims against.</p><% } %>
+
+<section class="section">
+  <h2>Rules</h2>
+  <form method="post" action="/settings/policy" class="card form">
+    <input type="hidden" name="form" value="policy">
+    <div class="row">
+      <label>Receipt required above ₹
+        <input type="text" inputmode="decimal" name="receiptRequiredAbove" value="<%= rupeeInput(policy.receiptRequiredAboveMinor) %>" <%= ro %>>
+      </label>
+      <label>GSTIN required above ₹
+        <input type="text" inputmode="decimal" name="gstinRequiredAbove" value="<%= rupeeInput(policy.gstinRequiredAboveMinor) %>" <%= ro %>>
+      </label>
+    </div>
+    <label class="check"><input type="checkbox" name="allowWeekendSpend" <%= policy.allowWeekendSpend ? 'checked' : '' %> <%= ro %>> Allow weekend spend without a flag</label>
+    <label>Policy notes <span class="muted small">(Claude reads these too)</span>
+      <textarea name="notes" rows="4" maxlength="5000" <%= ro %>><%= policy.notes %></textarea>
+    </label>
+    <% if (canEdit) { %><div class="form-actions"><button class="btn btn-primary" type="submit">Save rules</button></div><% } %>
+  </form>
+</section>
+
+<section class="section">
+  <h2>Categories</h2>
+  <form method="post" action="/settings/policy" class="card">
+    <input type="hidden" name="form" value="categories">
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>Name</th><th>Code</th><th class="num">Per item ₹</th><th class="num">Per day ₹</th><th>Active</th></tr></thead>
+        <tbody>
+          <% categories.forEach((c, i) => { %>
+            <tr>
+              <td><input type="hidden" name="categories[<%= i %>][id]" value="<%= c.id %>"><input type="text" name="categories[<%= i %>][name]" value="<%= c.name %>" maxlength="100" required <%= ro %>></td>
+              <td><input type="text" name="categories[<%= i %>][code]" value="<%= c.code %>" maxlength="20" class="mono code-input" required <%= ro %>></td>
+              <td><input type="text" inputmode="decimal" name="categories[<%= i %>][perItemLimit]" value="<%= rupeeInput(c.perItemLimitMinor) %>" placeholder="No limit" class="num" <%= ro %>></td>
+              <td><input type="text" inputmode="decimal" name="categories[<%= i %>][perDayLimit]" value="<%= rupeeInput(c.perDayLimitMinor) %>" placeholder="No limit" class="num" <%= ro %>></td>
+              <td><input type="checkbox" name="categories[<%= i %>][active]" <%= c.active ? 'checked' : '' %> <%= ro %> aria-label="Active"></td>
+            </tr>
+          <% }) %>
+          <% if (canEdit) { const n = categories.length; %>
+            <tr class="new-row">
+              <td><input type="text" name="categories[<%= n %>][name]" maxlength="100" placeholder="New category"></td>
+              <td><input type="text" name="categories[<%= n %>][code]" maxlength="20" class="mono code-input" placeholder="CODE"></td>
+              <td><input type="text" inputmode="decimal" name="categories[<%= n %>][perItemLimit]" placeholder="No limit" class="num"></td>
+              <td><input type="text" inputmode="decimal" name="categories[<%= n %>][perDayLimit]" placeholder="No limit" class="num"></td>
+              <td><input type="checkbox" name="categories[<%= n %>][active]" checked aria-label="Active"></td>
+            </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+    <% if (canEdit) { %><div class="form-actions"><button class="btn btn-primary" type="submit">Save categories</button></div><% } %>
+  </form>
+</section>

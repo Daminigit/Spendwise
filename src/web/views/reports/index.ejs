@@ -1,0 +1,53 @@
+<%
+  const groupLabels = { user: 'Person', category: 'Category', month: 'Month' };
+  const qs = (g) => `?from=${filters.from}&to=${filters.to}&groupBy=${g}`;
+%>
+<div class="page-head">
+  <div>
+    <h1>Reports</h1>
+    <p class="muted"><%= user.role === 'admin' ? 'Whole organisation' : 'You and your direct reports' %></p>
+  </div>
+  <% if (user.role === 'admin') { %>
+    <a class="btn" href="/reports/export.csv?from=<%= filters.from %>&to=<%= filters.to %>" download>Export CSV</a>
+  <% } %>
+</div>
+
+<form method="get" action="/reports" class="filters">
+  <input type="hidden" name="groupBy" value="<%= filters.groupBy %>">
+  <label class="inline">From <input type="date" name="from" value="<%= filters.from %>"></label>
+  <label class="inline">To <input type="date" name="to" value="<%= filters.to %>"></label>
+  <button class="btn btn-sm" type="submit">Apply</button>
+</form>
+
+<nav class="tabs" aria-label="Group by">
+  <% groups.forEach(g => { %>
+    <a href="/reports<%= qs(g) %>" class="<%= g === filters.groupBy ? 'active' : '' %>" <%- g === filters.groupBy ? 'aria-current="page"' : '' %>>By <%= groupLabels[g].toLowerCase() %></a>
+  <% }) %>
+</nav>
+
+<% if (rows.length === 0) { %>
+  <div class="card empty"><p class="muted">No expenses between <%= formatDate(filters.from) %> and <%= formatDate(filters.to) %>.</p></div>
+<% } else { %>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr><th><%= groupLabels[filters.groupBy] %></th><th class="num">Lines</th><th class="num">Approved</th><th class="num">Pending</th><th class="num">Rejected</th><th class="num">Total</th></tr>
+      </thead>
+      <tbody>
+        <% rows.forEach(r => { %>
+          <tr>
+            <td><%= r.label %></td>
+            <td class="num"><%= r.count %></td>
+            <td class="num"><%= formatINR(r.approvedMinor) %></td>
+            <td class="num"><%= formatINR(r.pendingMinor) %></td>
+            <td class="num"><%= formatINR(r.rejectedMinor) %></td>
+            <td class="num"><strong><%= formatINR(r.totalMinor) %></strong></td>
+          </tr>
+        <% }) %>
+      </tbody>
+      <tfoot>
+        <tr><th>Total</th><th class="num"><%= totals.count %></th><th class="num"><%= formatINR(totals.approvedMinor) %></th><th class="num"><%= formatINR(totals.pendingMinor) %></th><th class="num"><%= formatINR(totals.rejectedMinor) %></th><th class="num"><%= formatINR(totals.totalMinor) %></th></tr>
+      </tfoot>
+    </table>
+  </div>
+<% } %>
