@@ -29,6 +29,7 @@ import { DomainError } from '../../domain/errors.js';
 import { findUserById, getPolicy } from '../../domain/org.js';
 import { toPaise } from '../../domain/money.js';
 import type { ClaimStatus } from '../../db/schema.js';
+import { describeHistory } from '../history.js';
 import { ah, asArray, isoDate, optionalIsoDate, optionalText, parseForm, requiredText, rupees } from '../util.js';
 
 export const claimsRouter = Router();
@@ -134,6 +135,7 @@ claimsRouter.get(
       title: claim.title,
       claim,
       categories: categories.filter((c) => c.active || claim.expenses.some((e) => e.categoryId === c.id)),
+      history: describeHistory(claim, Object.fromEntries(categories.map((c) => [c.code, c.name]))),
       perms,
       today: new Date().toISOString().slice(0, 10),
     });

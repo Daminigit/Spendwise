@@ -8,7 +8,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import { eq, and, inArray, ne, sql } from 'drizzle-orm';
+import { eq, and, inArray, ne, or, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import {
   claims,
@@ -31,6 +31,7 @@ import type {
 } from '../db/schema.js';
 import { toPaise, sumPaise } from './money.js';
 import { DomainError } from './errors.js';
+import { appUrl as baseUrl } from '../config.js';
 import { checkExpense, checkSubmit, type FlagCode } from './rules.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -98,7 +99,8 @@ export interface ClaimSummary {
 export interface ClaimDetail extends Claim {
   expenses: Array<Expense & { categoryName: string; categoryCode: string }>;
   comments: Array<Comment & { userName: string }>;
-  history: AuditLog[];
+  /** Claim + line events, oldest first. Line events have entity 'expense'. */
+  history: Array<AuditLog & { actorName: string | null }>;
   user: { id: string; name: string; email: string };
   totals: ClaimTotals;
 }
@@ -123,7 +125,7 @@ function newId() {
 }
 
 function appUrl(claimId: string): string {
-  return `${process.env.APP_URL ?? 'http://localhost:3000'}/claims/${claimId}`;
+  return `${baseUrl()}/claims/${claimId}`;
 }
 
 async function writeAudit(params: {
@@ -493,28 +495,41 @@ export async function updateExpense(
     existingUserExpenses,
   );
 
-  const before: Record<string, unknown> = { amount: exp.amountMinor, categoryId: exp.categoryId, date: exp.date, receiptUrl: exp.receiptUrl };
+  const next = {
+    categoryId,
+    amountMinor,
+    taxableMinor,
+    cgstMinor,
+    sgstMinor,
+    igstMinor,
+    date,
+    merchant,
+    gstin: gstin ?? null,
+    description: fields.description ?? exp.description,
+    paymentMethod: fields.payment_method ?? exp.paymentMethod,
+    receiptUrl: fields.receipt_url ?? exp.receiptUrl,
+  };
 
   await db.update(expenses)
-    .set({
-      categoryId,
-      amountMinor,
-      taxableMinor,
-      cgstMinor,
-      sgstMinor,
-      igstMinor,
-      date,
-      merchant,
-      gstin: gstin ?? null,
-      description: fields.description ?? exp.description,
-      paymentMethod: fields.payment_method ?? exp.paymentMethod,
-      receiptUrl: fields.receipt_url ?? exp.receiptUrl,
-      flags,
-      updatedAt: new Date(),
-    })
+    .set({ ...next, flags, updatedAt: new Date() })
     .where(eq(expenses.id, expenseId));
 
-  await writeAudit({ orgId: claim.orgId, actorUserId: userId, actorVia: via, entity: 'expense', entityId: expenseId, action: 'update', before, after: { amount: amountMinor, categoryId, date, receiptUrl: fields.receipt_url ?? exp.receiptUrl } });
+  // Audit exactly the fields that changed (category changes also carry codes for display)
+  const before: Record<string, unknown> = {};
+  const after: Record<string, unknown> = {};
+  for (const key of Object.keys(next) as Array<keyof typeof next>) {
+    if (next[key] !== exp[key]) {
+      before[key] = exp[key];
+      after[key] = next[key];
+    }
+  }
+  if ('categoryId' in after) {
+    before.category = allCats.find((c) => c.id === exp.categoryId)?.code ?? null;
+    after.category = cat.code;
+  }
+  if (Object.keys(after).length > 0) {
+    await writeAudit({ orgId: claim.orgId, actorUserId: userId, actorVia: via, entity: 'expense', entityId: expenseId, action: 'update', before, after });
+  }
 
   return { expenseId, claimId: exp.claimId, flags };
 }
@@ -706,7 +721,9 @@ export async function getClaim(claimId: string, actorId: string): Promise<ClaimD
     })
     .from(expenses)
     .innerJoin(schema.categories, eq(expenses.categoryId, schema.categories.id))
-    .where(eq(expenses.claimId, claimId));
+    .where(eq(expenses.claimId, claimId))
+    // Stable line numbering: chronological, then in the order they were added
+    .orderBy(expenses.date, expenses.createdAt, expenses.merchant, expenses.id);
 
   const commentList = await db
     .select({
@@ -722,11 +739,20 @@ export async function getClaim(claimId: string, actorId: string): Promise<ClaimD
     .where(eq(comments.claimId, claimId))
     .orderBy(comments.createdAt);
 
-  const history = await db
-    .select()
+  // Claim-level events plus every line-level change (edits, approvals, rejections)
+  const lineIds = expList.map((e) => e.id);
+  const historyRows = await db
+    .select({ entry: auditLog, actorName: users.name })
     .from(auditLog)
-    .where(and(eq(auditLog.entity, 'claim'), eq(auditLog.entityId, claimId)))
-    .orderBy(auditLog.createdAt);
+    .leftJoin(users, eq(auditLog.actorUserId, users.id))
+    .where(
+      or(
+        and(eq(auditLog.entity, 'claim'), eq(auditLog.entityId, claimId)),
+        lineIds.length > 0 ? and(eq(auditLog.entity, 'expense'), inArray(auditLog.entityId, lineIds)) : undefined,
+      ),
+    )
+    .orderBy(auditLog.createdAt, auditLog.id);
+  const history = historyRows.map((r) => ({ ...r.entry, actorName: r.actorName }));
 
   const [owner] = await db.select({ id: users.id, name: users.name, email: users.email }).from(users).where(eq(users.id, claim.userId));
 

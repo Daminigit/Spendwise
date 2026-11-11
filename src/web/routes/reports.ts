@@ -17,7 +17,8 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function defaultRange() {
   const now = new Date();
-  const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 2, 1));
+  // Current month plus the three before it
+  const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 3, 1));
   return { from: from.toISOString().slice(0, 10), to: now.toISOString().slice(0, 10) };
 }
 

@@ -12,6 +12,7 @@ import { DomainError } from '../../domain/errors.js';
 import { createInvite, getPolicy, listTeam, updateMember, upsertCategories, updatePolicy } from '../../domain/org.js';
 import { createToken, listTokens, revokeToken } from '../../domain/tokens.js';
 import { toPaise } from '../../domain/money.js';
+import { appUrl } from '../../config.js';
 import { ah, asArray, checkbox, optionalLimitPaise, parseForm, requiredText, rupees } from '../util.js';
 
 export const settingsRouter = Router();
@@ -111,7 +112,7 @@ settingsRouter.post(
     if (req.body.action === 'invite') {
       const input = parseForm(z.object({ role: ROLE, managerId }), req.body);
       const { token, expiresAt } = await createInvite(req.user!.id, input.role, input.managerId);
-      const base = (process.env.APP_URL ?? `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+      const base = appUrl();
       req.session.inviteLink = { url: `${base}/signup?invite=${encodeURIComponent(token)}`, role: input.role, expiresAt: expiresAt.toISOString() };
       return res.redirect(303, '/settings/team#invite');
     }

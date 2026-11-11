@@ -12,7 +12,7 @@ export function registerGetSpendReport(server: McpServer, ctx: McpContext) {
       title: 'Spend report',
       description:
         'Spend totals between two expense dates, grouped by person, category or month, split into approved, ' +
-        'pending and rejected (rupees). Admins see the whole organisation; managers see themselves and their ' +
+        'pending and rejected (rupees); drafts are excluded. Admins see the whole organisation; managers see themselves and their ' +
         'direct reports. Employees cannot use this tool.',
       inputSchema: {
         from: dateField.describe('First expense date to include, YYYY-MM-DD'),

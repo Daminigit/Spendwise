@@ -11,14 +11,14 @@ import { db } from '../db/index.js';
 import { auditLog, mcpTokens, users } from '../db/schema.js';
 import type { McpToken, User } from '../db/schema.js';
 import { DomainError } from './errors.js';
+import { appUrl } from '../config.js';
 
 export function hashToken(raw: string): string {
   return createHash('sha256').update(raw).digest('hex');
 }
 
 export function connectorUrl(rawToken: string): string {
-  const base = (process.env.APP_URL ?? 'http://localhost:3000').replace(/\/$/, '');
-  return `${base}/mcp/${rawToken}`;
+  return `${appUrl()}/mcp/${rawToken}`;
 }
 
 export type TokenSummary = Pick<McpToken, 'id' | 'label' | 'createdAt' | 'lastUsedAt' | 'revokedAt'>;

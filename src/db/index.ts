@@ -42,7 +42,10 @@ export function getDb() {
 // Convenience re-export so callers can just: import { db } from '@/db/index.js'
 export const db = new Proxy({} as ReturnType<typeof createPostgresDb>, {
   get(_target, prop) {
-    return (getDb() as any)[prop];
+    const real = getDb();
+    const value = Reflect.get(real, prop, real);
+    // Bind methods so `this` is the real drizzle instance, not the proxy
+    return typeof value === 'function' ? value.bind(real) : value;
   },
 });
 

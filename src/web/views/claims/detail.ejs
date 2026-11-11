@@ -1,6 +1,5 @@
 <%
   const isMine = claim.userId === user.id;
-  const actionLabels = { create: 'Created', add_expenses: 'Added lines', submit: 'Submitted', decide: 'Decided', mark_paid: 'Marked paid' };
   const catOptions = (selectedId) => categories.map(c =>
     `<option value="${c.code}" ${c.id === selectedId ? 'selected' : ''}>${c.name.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch])}</option>`
   ).join('');
@@ -185,11 +184,11 @@
   <section>
     <h2>History</h2>
     <ol class="history">
-      <% claim.history.forEach(h => { %>
+      <% history.slice().reverse().forEach(h => { %>
         <li>
-          <strong><%= actionLabels[h.action] || h.action %></strong>
-          <% if (h.after && h.after.status) { %> → <%= statusLabel(String(h.after.status)) %><% } %>
-          <span class="muted small">· <%= h.actorUserId === claim.userId ? claim.user.name : h.actorUserId === user.id ? 'you' : 'approver' %> via <%= h.actorVia === 'mcp' ? 'Claude' : 'web' %> · <%= formatDateTime(h.createdAt) %></span>
+          <span><%= h.text %></span>
+          <% if (h.note) { %><span class="note small">“<%= h.note %>”</span><% } %>
+          <span class="muted small"><%= h.who %> · <span class="badge <%= h.via === 'claude' ? 'source' : '' %>">via <%= h.via === 'claude' ? 'Claude' : 'web' %></span> · <%= formatDateTime(h.at) %></span>
         </li>
       <% }) %>
     </ol>

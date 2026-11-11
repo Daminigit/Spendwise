@@ -58,8 +58,10 @@ export async function getSpendReport(
   }
 
   // Build base condition
+  // Drafts haven't been submitted yet, so they aren't spend (same rule as the CSV export)
   const baseCondition = and(
     eq(claims.orgId, orgId),
+    ne(claims.status, 'draft'),
     gte(expenses.date, filters.from),
     lte(expenses.date, filters.to),
     scopeUserIds ? inArray(claims.userId, scopeUserIds) : undefined,

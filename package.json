@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc --project tsconfig.build.json",
-    "start": "node dist/server.js",
-    "migrate": "drizzle-kit migrate",
+    "start": "node dist/db/migrate.js && exec node dist/server.js",
+    "migrate": "tsx src/db/migrate.ts",
     "migrate:generate": "drizzle-kit generate",
     "seed": "tsx src/db/seed.ts",
     "test": "vitest run",
@@ -15,7 +15,12 @@
     "lint": "eslint src tests",
     "lint:fix": "eslint src tests --fix",
     "format": "prettier --write .",
-    "check:no-ai": "node scripts/check-no-ai.js"
+    "check:no-ai": "node scripts/check-no-ai.js",
+    "start:server": "node dist/server.js",
+    "migrate:prod": "node dist/db/migrate.js",
+    "seed:prod": "node dist/db/seed.js",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
+    "test:integration": "vitest run tests/integration"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.700.0",

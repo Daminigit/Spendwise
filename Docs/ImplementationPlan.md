@@ -345,7 +345,9 @@ Creates **Acme Travel Pvt Ltd** with realistic demo data.
 
 **Claims:** ~3 months of past claims across all statuses (draft, submitted, approved, partially_approved, rejected, paid) so the reports page looks real.
 
-**Demo MCP token** for Riya — printed at end of seed so reviewers can copy-paste.
+**Demo MCP token** for Riya — printed at end of seed so reviewers can copy-paste (or fixed via `DEMO_MCP_TOKEN`).
+
+> Done: `npm run seed` (`-- --reset` to recreate), or `SEED_DEMO=true` to seed on boot (Render free plan has no shell). 13 claims across all six statuses, PDF receipts, a Claude-sourced draft, back-dated audit history.
 
 ---
 
@@ -353,16 +355,16 @@ Creates **Acme Travel Pvt Ltd** with realistic demo data.
 
 ### 7.1 Unit Tests (Vitest)
 
-- [ ] `tests/domain/money.test.ts` — conversion, formatting edge cases
-- [ ] `tests/domain/gstin.test.ts` — valid/invalid GSTINs, checksum
-- [ ] `tests/domain/rules.test.ts` — each of the 9 flag codes
-- [ ] `tests/domain/claims.test.ts` — create, submit, decide lifecycle
+- [x] `tests/domain/money.test.ts` — conversion, formatting edge cases
+- [x] `tests/domain/gstin.test.ts` — valid/invalid GSTINs, checksum
+- [x] `tests/domain/rules.test.ts` — each of the 9 flag codes
+- [x] `tests/domain/claims.test.ts` — create, submit, decide lifecycle
 
 ### 7.2 MCP Integration Tests
 
-- [ ] Start a test Express server with a seeded SQLite DB
-- [ ] Call each MCP tool over HTTP with a valid test token
-- [ ] Assert:
+- [x] Start a test Express server against a Postgres test DB (`TEST_DATABASE_URL`; the domain uses Postgres-specific SQL, so SQLite was dropped)
+- [x] Call each MCP tool over HTTP with a valid test token
+- [x] Assert:
   - `create_claim` returns correct totals and flags
   - `submit_claim` changes status to `submitted`
   - `decide_claim` correctly sets `partially_approved`
@@ -371,10 +373,10 @@ Creates **Acme Travel Pvt Ltd** with realistic demo data.
 
 ### 7.3 Permission Tests
 
-- [ ] Employee token cannot read another employee's claim
-- [ ] Employee token cannot call `list_pending_approvals`
-- [ ] Manager token cannot see claims of employees not under them
-- [ ] Revoked token returns 401
+- [x] Employee token cannot read another employee's claim
+- [x] Employee token cannot call `list_pending_approvals`
+- [x] Manager token cannot see claims of employees not under them
+- [x] Revoked token returns 401
 
 ### 7.4 CI Pipeline (GitHub Actions)
 
@@ -426,7 +428,7 @@ databases:
 
 ### 8.3 Post-Deploy Checklist
 
-- [ ] `npm run seed` against production DB (or via Render shell)
+- [ ] Demo seeded on first boot (`SEED_DEMO=true` in `render.yaml`)
 - [ ] Landing page loads at public URL
 - [ ] Login as `admin@acme.test` / `demo1234` works
 - [ ] MCP connector URL for Riya copied from `/settings/connect`

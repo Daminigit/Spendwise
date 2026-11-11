@@ -1,26 +1,53 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# New → Blueprint → pick this repo. Creates the web service + Postgres.
 services:
   - type: web
     name: spendwise
-    env: node
+    runtime: node
     plan: free
-    buildCommand: npm ci && npm run build && npm run migrate
+    region: singapore # must match the database region
+    # NODE_ENV=production makes `npm ci` skip devDependencies, but the build
+    # needs TypeScript, so include them explicitly.
+    buildCommand: npm ci --include=dev && npm run build
+    # Applies migrations (and seeds the demo org when SEED_DEMO=true), then serves.
     startCommand: npm start
-    healthCheckPath: /health
+    healthCheckPath: /healthz
     envVars:
+      - key: NODE_VERSION
+        value: '22'
+      - key: NODE_ENV
+        value: production
       - key: DATABASE_URL
         fromDatabase:
           name: spendwise-db
           property: connectionString
       - key: SESSION_SECRET
         generateValue: true
+      # Optional: APP_URL. If unset, Render's RENDER_EXTERNAL_URL is used, which
+      # is right unless you add a custom domain.
       - key: APP_URL
-        value: https://spendwise.onrender.com
-      - key: NODE_ENV
-        value: production
-      - key: DB_DRIVER
-        value: postgres
+        sync: false
+      # Seed the "Acme Travel" demo org on first boot (skipped once it exists).
+      - key: SEED_DEMO
+        value: 'true'
+      # Optional fixed demo connector token (sw_ + 20+ url-safe chars) so the
+      # README can show a stable URL. Leave empty for a random one (see logs).
+      - key: DEMO_MCP_TOKEN
+        sync: false
+      # Receipt storage (Cloudflare R2). Without these, receipts go to the
+      # instance's local disk, which Render wipes on every deploy/restart.
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY
+        sync: false
+      - key: S3_SECRET_KEY
+        sync: false
+      - key: S3_REGION
+        value: auto
 
 databases:
   - name: spendwise-db
     plan: free
-
+    region: singapore

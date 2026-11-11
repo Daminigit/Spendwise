@@ -189,7 +189,9 @@ h1 .badge { font-size: 0.8rem; }
 .comments { list-style: none; padding: 0; margin: 0 0 0.75rem; display: grid; gap: 0.5rem; }
 .comments .card { padding: 0.6rem 0.8rem; }
 .comments p { margin: 0; }
-.history { padding-left: 1.1rem; margin: 0; display: grid; gap: 0.4rem; }
+.history { padding-left: 1.1rem; margin: 0; display: grid; gap: 0.6rem; }
+.history li { display: grid; gap: 0.15rem; }
+.history .note { margin: 0; }
 
 /* ── Tables ──────────────────────────────────────────────────────────────── */
 .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }

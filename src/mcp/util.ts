@@ -12,6 +12,8 @@ import { DomainError } from '../domain/errors.js';
 import { formatINR, toRupees } from '../domain/money.js';
 import type { ClaimDetail, ClaimSummary, ClaimTotals } from '../domain/claims.js';
 import { FLAG_LABELS } from '../web/util.js';
+import { appUrl } from '../config.js';
+import { describeHistory } from '../web/history.js';
 
 /** Who is calling: the user that owns the connector token. */
 export interface McpContext {
@@ -86,7 +88,7 @@ export function presentFlags(flags: string[]) {
 }
 
 export function claimUrl(claimId: string) {
-  return `${(process.env.APP_URL ?? 'http://localhost:3000').replace(/\/$/, '')}/claims/${claimId}`;
+  return `${appUrl()}/claims/${claimId}`;
 }
 
 export function presentSummary(c: ClaimSummary) {
@@ -129,7 +131,7 @@ export function presentLine(e: ClaimDetail['expenses'][number]) {
   };
 }
 
-export function presentClaim(c: ClaimDetail) {
+export function presentClaim(c: ClaimDetail, categoryNamesByCode: Record<string, string> = {}) {
   return {
     claim_id: c.id,
     title: c.title,
@@ -145,11 +147,12 @@ export function presentClaim(c: ClaimDetail) {
     totals: presentTotals(c.totals),
     lines: c.expenses.map(presentLine),
     comments: c.comments.map((m) => ({ by: m.userName, at: m.createdAt.toISOString(), body: m.body })),
-    history: c.history.map((h) => ({
-      action: h.action,
-      via: h.actorVia === 'mcp' ? 'claude' : 'web',
-      at: h.createdAt.toISOString(),
-      ...(h.after && 'status' in h.after ? { status: h.after.status } : {}),
+    history: describeHistory(c, categoryNamesByCode).map((h) => ({
+      at: h.at.toISOString(),
+      by: h.who,
+      via: h.via,
+      event: h.text,
+      ...(h.note ? { note: h.note } : {}),
     })),
     app_url: claimUrl(c.id),
   };

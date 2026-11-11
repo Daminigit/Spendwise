@@ -6,9 +6,29 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-and-test:
-    name: Build & Test
+  no-ai-check:
+    name: No-AI guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # Zero dependencies: fails if package.json, the lockfile or any source/config
+      # file references a banned AI package or an (OPENAI|ANTHROPIC|GEMINI|MISTRAL|COHERE)_ env var.
+      - name: Check for banned AI packages and env vars
+        run: node scripts/check-no-ai.js
+
+  build-test:
+    name: Build & test
     runs-on: ubuntu-latest
 
     services:
@@ -27,18 +47,12 @@ jobs:
           --health-retries 5
 
     env:
-      DATABASE_URL: postgresql://spendwise:spendwise@localhost:5432/spendwise_test
+      TEST_DATABASE_URL: postgresql://spendwise:spendwise@localhost:5432/spendwise_test
       SESSION_SECRET: ci_test_secret_32chars_minimum_xx
-      APP_URL: http://localhost:3000
-      NODE_ENV: test
-      DB_DRIVER: postgres
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js 22
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
@@ -46,31 +60,50 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Type-check
-        run: npx tsc --noEmit
+      - name: Type-check (src + tests)
+        run: npm run typecheck
 
       - name: Lint
         run: npm run lint
 
-      - name: Run migrations
-        run: npm run migrate
+      - name: Build
+        run: npm run build
 
-      - name: Run tests
+      # Unit + integration tests (MCP over HTTP, permissions, web flows, seed).
+      # Migrations are applied to TEST_DATABASE_URL by the vitest global setup.
+      - name: Test
         run: npm test
 
-  no-ai-check:
-    name: No-AI Guard
+      # Run the compiled app the way production does: migrate on boot, seed the
+      # demo org, serve. Then hit the landing page and the MCP endpoint.
+      - name: Smoke-test the production build
+        env:
+          DATABASE_URL: postgresql://spendwise:spendwise@localhost:5432/spendwise_smoke
+          NODE_ENV: production
+          PORT: '3000'
+          APP_URL: http://localhost:3000
+          SEED_DEMO: 'true'
+          DEMO_MCP_TOKEN: sw_ci_smoke_token_0123456789abcdef
+        run: |
+          PGPASSWORD=spendwise createdb -h localhost -U spendwise spendwise_smoke
+          npm start > server.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:3000/healthz && break; sleep 1; done
+          curl -sf http://localhost:3000/ | grep -q 'How it works'
+          curl -sf -X POST "http://localhost:3000/mcp/$DEMO_MCP_TOKEN" \
+            -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | grep -q create_claim
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:3000/mcp/sw_bogus \
+            -H 'content-type: application/json' -d '{}')" = "401"
+          echo "Smoke test passed"
+
+      - name: Server log
+        if: always()
+        run: cat server.log || true
+
+  docker:
+    name: Docker image builds
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Check for banned AI packages and env vars
-        run: node scripts/check-no-ai.js
-
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t spendwise:ci .

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getClaim } from '../../domain/claims.js';
+import { getPolicy } from '../../domain/org.js';
 import { presentClaim, run, type McpContext } from '../util.js';
 
 export function registerGetClaim(server: McpServer, ctx: McpContext) {
@@ -17,6 +18,11 @@ export function registerGetClaim(server: McpServer, ctx: McpContext) {
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    (args) => run('get_claim', async () => presentClaim(await getClaim(args.claim_id, ctx.user.id))),
+    (args) =>
+      run('get_claim', async () => {
+        const claim = await getClaim(args.claim_id, ctx.user.id);
+        const { categories } = await getPolicy(claim.orgId);
+        return presentClaim(claim, Object.fromEntries(categories.map((c) => [c.code, c.name])));
+      }),
   );
 }
