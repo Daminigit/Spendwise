@@ -1,35 +1,25 @@
 /**
- * POST /upload/receipt  multipart field "receipt" (+ optional "expenseId")
- * → { url }. When expenseId is given the receipt is attached immediately
- * (same permission rules as editing the line).
+ * POST /upload/receipt  multipart: "receipt" (file) + "expenseId"
+ * → { url, attached: true }
+ *
+ * The caller must be allowed to edit the expense (owner on a draft, or the
+ * approver on a submitted claim). The permission check runs BEFORE the file is
+ * stored, and the file type is detected from its bytes, not the client's claim.
  */
 
 import { Router } from 'express';
 import multer from 'multer';
 import { requireAuth } from '../../auth/middleware.js';
-import { updateExpense } from '../../domain/claims.js';
+import { loadEditableExpense, updateExpense } from '../../domain/claims.js';
 import { DomainError } from '../../domain/errors.js';
-import { uploadReceipt } from '../../storage/index.js';
+import { MAX_RECEIPT_BYTES, UnsupportedFileError, uploadReceipt } from '../../storage/index.js';
 import { ah } from '../util.js';
 
 export const uploadRouter = Router();
 
-const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'application/pdf']);
-const EXT: Record<string, string> = {
-  'image/jpeg': '.jpg',
-  'image/png': '.png',
-  'image/webp': '.webp',
-  'image/heic': '.heic',
-  'application/pdf': '.pdf',
-};
-
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
-  fileFilter: (_req, file, cb) => {
-    if (ALLOWED.has(file.mimetype)) cb(null, true);
-    else cb(new DomainError('Receipts must be a JPG, PNG, WebP, HEIC or PDF file.', 'invalid'));
-  },
+  limits: { fileSize: MAX_RECEIPT_BYTES, files: 1, fields: 5 },
 });
 
 uploadRouter.post(
@@ -37,15 +27,21 @@ uploadRouter.post(
   requireAuth,
   upload.single('receipt'),
   ah(async (req, res) => {
+    const expenseId = typeof req.body.expenseId === 'string' ? req.body.expenseId.trim() : '';
+    if (!expenseId) throw new DomainError('Missing expenseId: receipts are attached to an expense line.', 'invalid');
     if (!req.file) throw new DomainError('No file received (field name must be "receipt").', 'invalid');
 
-    const expenseId = typeof req.body.expenseId === 'string' && req.body.expenseId ? req.body.expenseId : null;
-    // Derive extension from the validated mime type, never from the client's filename
-    const { url } = await uploadReceipt(req.file.buffer, `receipt${EXT[req.file.mimetype]}`);
+    await loadEditableExpense(expenseId, req.user!.id);
 
-    if (expenseId) {
-      await updateExpense(expenseId, req.user!.id, { receipt_url: url }, 'web');
+    let url: string;
+    try {
+      ({ url } = await uploadReceipt(req.file.buffer));
+    } catch (err) {
+      if (err instanceof UnsupportedFileError) throw new DomainError(err.message, 'invalid');
+      throw err;
     }
-    res.json({ url, attached: Boolean(expenseId) });
+
+    await updateExpense(expenseId, req.user!.id, { receipt_url: url }, 'web');
+    res.json({ url, attached: true });
   }),
 );

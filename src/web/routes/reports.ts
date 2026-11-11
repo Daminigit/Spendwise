@@ -4,8 +4,10 @@
  */
 
 import { Router } from 'express';
+import { Readable } from 'stream';
+import { pipeline } from 'stream/promises';
 import { requireRole } from '../../auth/middleware.js';
-import { generateCSV, getSpendReport, type GroupBy } from '../../domain/reports.js';
+import { getSpendReport, streamExpenseCSV, type ExportScope, type GroupBy } from '../../domain/reports.js';
 import { ah } from '../util.js';
 
 export const reportsRouter = Router();
@@ -52,9 +54,22 @@ reportsRouter.get(
   requireRole('admin'),
   ah(async (req, res) => {
     const { from, to } = readFilters(req.query);
-    const csv = await generateCSV(req.user!.orgId, req.user!.id, { from, to });
+    const scope: ExportScope = req.query.scope === 'all' ? 'all' : 'approved';
+    const chunks = streamExpenseCSV(req.user!.orgId, req.user!.id, { from, to, scope });
+
+    // Pull the first chunk (header) before sending headers, so a permission
+    // error still becomes a normal error response instead of a broken download.
+    const first = await chunks.next();
+
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="spendwise-${from}-to-${to}.csv"`);
-    res.send(`\uFEFF${csv}`); // BOM so Excel opens UTF-8 (₹, names) correctly
+    res.setHeader('Content-Disposition', `attachment; filename="spendwise-export-${scope}-${from}-to-${to}.csv"`);
+    res.setHeader('Cache-Control', 'no-store');
+
+    async function* body() {
+      yield '﻿'; // BOM so Excel opens UTF-8 (₹, names) correctly
+      if (!first.done) yield first.value;
+      yield* chunks;
+    }
+    await pipeline(Readable.from(body()), res);
   }),
 );

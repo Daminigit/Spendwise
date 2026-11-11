@@ -51,6 +51,24 @@ const lineSchema = z.object({
   payment_method: PAYMENT_METHOD.optional().default('personal_card'),
 });
 
+/**
+ * Editing an existing line: every field is optional and an ABSENT field means
+ * "unchanged" (no defaults — a partial post must never zero GST amounts).
+ */
+const editLineSchema = z.object({
+  date: isoDate.optional(),
+  merchant: requiredText('Merchant', 200).optional(),
+  category: requiredText('Category', 100).optional(),
+  description: z.string().trim().max(500).optional(),
+  amount: rupees.refine((v) => v > 0, 'must be more than zero').optional(),
+  gstin: z.string().trim().max(20).optional(),
+  taxable_amount: rupees.optional(),
+  cgst: rupees.optional(),
+  sgst: rupees.optional(),
+  igst: rupees.optional(),
+  payment_method: PAYMENT_METHOD.optional(),
+});
+
 // ── Permission summary for the detail view ───────────────────────────────────
 
 async function permissionsFor(req: Request, claim: ClaimDetail) {
@@ -135,23 +153,26 @@ claimsRouter.post(
       const id = typeof (row as { id?: unknown }).id === 'string' ? (row as { id: string }).id : '';
       const existing = claim.expenses.find((e) => e.id === id);
       if (!existing) continue; // ignore unknown ids rather than touching other claims
-      const line = parseForm(lineSchema, row);
-      const receiptUrl = typeof (row as { receipt_url?: unknown }).receipt_url === 'string' ? (row as { receipt_url: string }).receipt_url : '';
+      const line = parseForm(editLineSchema, row);
 
-      const category = line.category.toUpperCase();
-      const fields: Partial<ExpenseInputRaw & { receipt_url: string }> = {};
-      if (line.date !== existing.date) fields.date = line.date;
-      if (line.merchant !== existing.merchant) fields.merchant = line.merchant;
-      if (category !== existing.categoryCode.toUpperCase()) fields.category = category;
-      if (line.description !== existing.description) fields.description = line.description;
-      if (toPaise(line.amount) !== existing.amountMinor) fields.amount = line.amount;
-      if ((line.gstin.toUpperCase() || null) !== (existing.gstin || null)) fields.gstin = line.gstin;
-      if (toPaise(line.taxable_amount) !== existing.taxableMinor) fields.taxable_amount = line.taxable_amount;
-      if (toPaise(line.cgst) !== existing.cgstMinor) fields.cgst = line.cgst;
-      if (toPaise(line.sgst) !== existing.sgstMinor) fields.sgst = line.sgst;
-      if (toPaise(line.igst) !== existing.igstMinor) fields.igst = line.igst;
-      if (line.payment_method !== existing.paymentMethod) fields.payment_method = line.payment_method;
-      if (receiptUrl && receiptUrl !== existing.receiptUrl) fields.receipt_url = receiptUrl;
+      // receipt_url is never taken from the form; only POST /upload/receipt sets it
+      const fields: Partial<ExpenseInputRaw> = {};
+      const moneyChanged = (v: number | undefined, current: number) => v !== undefined && toPaise(v) !== current;
+      if (line.date !== undefined && line.date !== existing.date) fields.date = line.date;
+      if (line.merchant !== undefined && line.merchant !== existing.merchant) fields.merchant = line.merchant;
+      if (line.category !== undefined && line.category.toUpperCase() !== existing.categoryCode.toUpperCase()) {
+        fields.category = line.category.toUpperCase();
+      }
+      if (line.description !== undefined && line.description !== existing.description) fields.description = line.description;
+      if (moneyChanged(line.amount, existing.amountMinor)) fields.amount = line.amount;
+      if (line.gstin !== undefined && (line.gstin.toUpperCase() || null) !== (existing.gstin || null)) fields.gstin = line.gstin;
+      if (moneyChanged(line.taxable_amount, existing.taxableMinor)) fields.taxable_amount = line.taxable_amount;
+      if (moneyChanged(line.cgst, existing.cgstMinor)) fields.cgst = line.cgst;
+      if (moneyChanged(line.sgst, existing.sgstMinor)) fields.sgst = line.sgst;
+      if (moneyChanged(line.igst, existing.igstMinor)) fields.igst = line.igst;
+      if (line.payment_method !== undefined && line.payment_method !== existing.paymentMethod) {
+        fields.payment_method = line.payment_method;
+      }
 
       if (Object.keys(fields).length === 0) continue;
       await updateExpense(existing.id, req.user!.id, fields, 'web');

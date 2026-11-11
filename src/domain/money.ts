@@ -43,3 +43,14 @@ export function withinTolerance(a: number, b: number, tolerancePaise = 100): boo
   return Math.abs(a - b) <= tolerancePaise;
 }
 
+
+/**
+ * Paise → exact decimal string with 2 places ("123456" → "1234.56").
+ * Integer arithmetic only, so there is no float rounding in exports.
+ */
+export function paiseToDecimal(paise: number): string {
+  if (!Number.isInteger(paise)) throw new Error(`Expected integer paise, got ${paise}`);
+  const sign = paise < 0 ? '-' : '';
+  const abs = Math.abs(paise);
+  return `${sign}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
+}

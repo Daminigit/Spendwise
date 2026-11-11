@@ -299,18 +299,18 @@ Permission: admin (all), manager (own team)
 
 ### 5.1 Receipt Image Storage
 
-- [ ] Install: `@aws-sdk/client-s3` (S3-compatible, works with Cloudflare R2)
-- [ ] `src/storage/index.ts` — `uploadReceipt(buffer, filename): Promise<url>`
+- [x] Install: `@aws-sdk/client-s3` (S3-compatible, works with Cloudflare R2)
+- [x] `src/storage/index.ts` — `uploadReceipt(buffer, filename): Promise<url>`
   - **Dev:** save to `./uploads/` local disk, return `/uploads/<filename>`
   - **Prod:** upload to Cloudflare R2, return CDN URL
-- [ ] `POST /upload/receipt` route — multipart, returns `{ url }`
-- [ ] Store URL in `expenses.receipt_url`
+- [x] `POST /upload/receipt` route — multipart, returns `{ url }`
+- [x] Store URL in `expenses.receipt_url`
 
 ### 5.2 CSV Export
 
-- [ ] `GET /reports/export.csv` — streams Postgres query as CSV
-- [ ] Columns: `claim_id, employee, email, date, merchant, category, category_code, description, amount, currency, taxable, cgst, sgst, igst, gstin, payment_method, status, approver, decided_at, paid_at`
-- [ ] Proper CSV escaping, `Content-Disposition: attachment; filename="spendwise-export.csv"`
+- [x] `GET /reports/export.csv` — streams Postgres query as CSV
+- [x] Columns: `claim_id, employee, email, date, merchant, category, category_code, description, amount, currency, taxable, cgst, sgst, igst, gstin, payment_method, status, approver, decided_at, paid_at`
+- [x] Proper CSV escaping, `Content-Disposition: attachment; filename="spendwise-export.csv"`
 
 ---
 

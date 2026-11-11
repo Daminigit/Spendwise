@@ -416,12 +416,11 @@ export async function addExpenses(
 // updateExpense
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function updateExpense(
-  expenseId: string,
-  userId: string,
-  fields: Partial<ExpenseInputRaw & { receipt_url: string }>,
-  via: AuditVia,
-): Promise<ExpenseResult & { claimId: string }> {
+/**
+ * Load an expense the user may edit: the owner while the claim is a draft, or
+ * the owner's manager / an org admin while it is submitted. Throws otherwise.
+ */
+export async function loadEditableExpense(expenseId: string, userId: string): Promise<{ exp: Expense; claim: Claim }> {
   const [exp] = await db.select().from(expenses).where(eq(expenses.id, expenseId));
   if (!exp) throw new DomainError('Expense not found.');
 
@@ -431,7 +430,6 @@ export async function updateExpense(
   const [actor] = await db.select().from(users).where(eq(users.id, userId));
   if (!actor) throw new DomainError('User not found.');
 
-  // Permission: owner (draft) OR manager/admin approver
   const isOwner = claim.userId === userId && claim.status === 'draft';
   let isApprover = false;
   if (claim.status === 'submitted' && actor.orgId === claim.orgId) {
@@ -445,6 +443,16 @@ export async function updateExpense(
   if (!isOwner && !isApprover) {
     throw new DomainError('You do not have permission to edit this expense.');
   }
+  return { exp, claim };
+}
+
+export async function updateExpense(
+  expenseId: string,
+  userId: string,
+  fields: Partial<ExpenseInputRaw & { receipt_url: string }>,
+  via: AuditVia,
+): Promise<ExpenseResult & { claimId: string }> {
+  const { exp, claim } = await loadEditableExpense(expenseId, userId);
 
   const [pol] = await db.select().from(policy).where(eq(policy.orgId, claim.orgId));
   const allCats = await db.select().from(categories).where(eq(categories.orgId, claim.orgId));
@@ -485,7 +493,7 @@ export async function updateExpense(
     existingUserExpenses,
   );
 
-  const before: Record<string, unknown> = { amount: exp.amountMinor, categoryId: exp.categoryId, date: exp.date };
+  const before: Record<string, unknown> = { amount: exp.amountMinor, categoryId: exp.categoryId, date: exp.date, receiptUrl: exp.receiptUrl };
 
   await db.update(expenses)
     .set({
@@ -506,7 +514,7 @@ export async function updateExpense(
     })
     .where(eq(expenses.id, expenseId));
 
-  await writeAudit({ orgId: claim.orgId, actorUserId: userId, actorVia: via, entity: 'expense', entityId: expenseId, action: 'update', before, after: { amount: amountMinor, categoryId, date } });
+  await writeAudit({ orgId: claim.orgId, actorUserId: userId, actorVia: via, entity: 'expense', entityId: expenseId, action: 'update', before, after: { amount: amountMinor, categoryId, date, receiptUrl: fields.receipt_url ?? exp.receiptUrl } });
 
   return { expenseId, claimId: exp.claimId, flags };
 }
@@ -918,4 +926,29 @@ export async function listAwaitingPayment(actorId: string): Promise<ClaimSummary
     createdAt: r.createdAt,
     user: { id: r.userId, name: r.userName, email: r.userEmail },
   }));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Receipt access
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Throws unless `actorId` may view the claim that references this receipt
+ * (owner, owner's manager, or an admin in the same org). Receipts that no
+ * expense references are treated as not found.
+ */
+export async function assertCanViewReceipt(receiptUrl: string, actorId: string): Promise<void> {
+  const [exp] = await db
+    .select({ claimId: expenses.claimId })
+    .from(expenses)
+    .where(eq(expenses.receiptUrl, receiptUrl))
+    .limit(1);
+  if (!exp) throw new DomainError('Receipt not found.', 'not_found');
+  try {
+    await getClaim(exp.claimId, actorId);
+  } catch (err) {
+    // Don't reveal that the receipt exists to someone who can't see the claim
+    if (err instanceof DomainError) throw new DomainError('Receipt not found.', 'not_found');
+    throw err;
+  }
 }

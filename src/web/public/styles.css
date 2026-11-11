@@ -227,3 +227,6 @@ h1 .badge { font-size: 0.8rem; }
 
 .footer { border-top: 1px solid var(--border); color: var(--muted); font-size: 0.82rem; }
 .footer .container { padding: 1rem; }
+
+.export-form { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.export-form select { width: auto; }

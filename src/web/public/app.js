@@ -54,10 +54,6 @@
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `Upload failed (${res.status})`);
 
-      const fieldset = zone.closest('fieldset, form') || document;
-      const hidden = fieldset.querySelector('[data-receipt-url]');
-      if (hidden) hidden.value = data.url;
-
       const link = zone.querySelector('[data-receipt-link]');
       if (link) {
         const a = document.createElement('a');
@@ -68,7 +64,7 @@
         a.setAttribute('data-receipt-link', '');
         link.replaceWith(a);
       }
-      setStatus(data.attached ? 'Attached ✓' : 'Uploaded ✓ — save to attach');
+      setStatus('Attached ✓');
     } catch (err) {
       setStatus(err.message, true);
     } finally {

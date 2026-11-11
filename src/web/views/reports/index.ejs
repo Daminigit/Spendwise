@@ -8,7 +8,18 @@
     <p class="muted"><%= user.role === 'admin' ? 'Whole organisation' : 'You and your direct reports' %></p>
   </div>
   <% if (user.role === 'admin') { %>
-    <a class="btn" href="/reports/export.csv?from=<%= filters.from %>&to=<%= filters.to %>" download>Export CSV</a>
+    <form method="get" action="/reports/export.csv" class="export-form">
+      <input type="hidden" name="from" value="<%= filters.from %>">
+      <input type="hidden" name="to" value="<%= filters.to %>">
+      <label class="inline">
+        <span class="sr-only">Lines to export</span>
+        <select name="scope">
+          <option value="approved">Approved lines (for accounting)</option>
+          <option value="all">All submitted lines</option>
+        </select>
+      </label>
+      <button class="btn" type="submit">Export CSV</button>
+    </form>
   <% } %>
 </div>
 

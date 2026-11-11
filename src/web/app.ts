@@ -9,7 +9,7 @@ import express, { type ErrorRequestHandler, type Request } from 'express';
 import ejs from 'ejs';
 import multer from 'multer';
 import { createSessionMiddleware } from '../auth/session.js';
-import { populateUser, requireAuth } from '../auth/middleware.js';
+import { populateUser } from '../auth/middleware.js';
 import { DomainError, httpStatusFor } from '../domain/errors.js';
 import { createMcpRouter } from '../mcp/server.js';
 import { viewHelpers } from './util.js';
@@ -20,6 +20,8 @@ import { approvalsRouter } from './routes/approvals.js';
 import { reportsRouter } from './routes/reports.js';
 import { settingsRouter } from './routes/settings.js';
 import { uploadRouter } from './routes/upload.js';
+import { receiptsRouter } from './routes/receipts.js';
+import { assertStorageConfig } from '../storage/index.js';
 
 // Resolved from the working directory so it works for both `tsx src/…` and
 // `node dist/…` (the Dockerfile copies src/web/{views,public} next to dist/).
@@ -60,6 +62,7 @@ function wantsJson(req: Request): boolean {
 }
 
 export function createApp() {
+  assertStorageConfig();
   const app = express();
 
   app.set('trust proxy', 1); // Render / Fly terminate TLS in front of us
@@ -97,10 +100,6 @@ export function createApp() {
     next();
   });
 
-  // Local receipt files (dev only — prod uses S3/R2). Signed-in users only.
-  if (!process.env.S3_ENDPOINT) {
-    app.use('/uploads', requireAuth, express.static(path.resolve('uploads'), { fallthrough: false }));
-  }
 
   app.use(homeRouter);
   app.use(authRouter);
@@ -109,6 +108,7 @@ export function createApp() {
   app.use(reportsRouter);
   app.use(settingsRouter);
   app.use(uploadRouter);
+  app.use(receiptsRouter);
 
   // 404
   app.use((req, res) => {

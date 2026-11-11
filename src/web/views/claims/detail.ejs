@@ -50,7 +50,6 @@
           <fieldset class="card line line-<%= e.status %>">
             <legend class="sr-only">Line <%= i + 1 %></legend>
             <input type="hidden" name="lines[<%= i %>][id]" value="<%= e.id %>">
-            <input type="hidden" name="lines[<%= i %>][receipt_url]" value="<%= e.receiptUrl || '' %>" data-receipt-url>
             <div class="line-head">
               <span class="line-num">#<%= i + 1 %></span>
               <% e.flags.forEach(f => { %><span class="badge flag" title="<%= f %>"><%= flagLabel(f) %></span><% }) %>

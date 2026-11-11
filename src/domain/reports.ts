@@ -5,10 +5,12 @@
  * Managers see only their direct reports; admins see the full org.
  */
 
-import { eq, and, gte, lte, inArray, sql } from 'drizzle-orm';
+import { eq, and, gte, lte, inArray, ne, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/index.js';
 import { claims, expenses, users, categories } from '../db/schema.js';
-import { toRupees } from './money.js';
+import { paiseToDecimal } from './money.js';
+import { csvCell, csvRow } from './csv.js';
 import { DomainError } from './errors.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -123,98 +125,130 @@ export async function getSpendReport(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// generateCSV
+// CSV export
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Generate a CSV string for all approved/paid expenses in the org.
- * Columns match the spec in CONTEXT.md §7.
- */
-export async function generateCSV(
-  orgId: string,
-  actorId: string,
-  filters?: { from?: string; to?: string },
-): Promise<string> {
-  const [actor] = await db.select().from(users).where(eq(users.id, actorId));
-  if (!actor || actor.role !== 'admin') throw new DomainError('Only admins can export CSV.');
+export type ExportScope = 'approved' | 'all';
 
-  const rows = await db
-    .select({
-      claimId: claims.id,
-      employee: users.name,
-      email: users.email,
-      date: expenses.date,
-      merchant: expenses.merchant,
-      category: categories.name,
-      categoryCode: categories.code,
-      description: expenses.description,
-      amountMinor: expenses.amountMinor,
-      currency: expenses.currency,
-      taxableMinor: expenses.taxableMinor,
-      cgstMinor: expenses.cgstMinor,
-      sgstMinor: expenses.sgstMinor,
-      igstMinor: expenses.igstMinor,
-      gstin: expenses.gstin,
-      paymentMethod: expenses.paymentMethod,
-      expenseStatus: expenses.status,
-      decidedAt: claims.decidedAt,
-      paidAt: claims.paidAt,
-      approverName: sql<string | null>`(select u2.name from users u2 where u2.id = ${claims.decidedBy})`,
-    })
-    .from(expenses)
-    .innerJoin(claims, eq(expenses.claimId, claims.id))
-    .innerJoin(users, eq(claims.userId, users.id))
-    .innerJoin(categories, eq(expenses.categoryId, categories.id))
-    .where(
-      and(
-        eq(claims.orgId, orgId),
-        filters?.from ? gte(expenses.date, filters.from) : undefined,
-        filters?.to ? lte(expenses.date, filters.to) : undefined,
-      ),
-    )
-    .orderBy(expenses.date, claims.id);
-
-  const header = [
-    'claim_id', 'employee', 'email', 'date', 'merchant', 'category',
-    'category_code', 'description', 'amount', 'currency', 'taxable',
-    'cgst', 'sgst', 'igst', 'gstin', 'payment_method', 'status',
-    'approver', 'decided_at', 'paid_at',
-  ];
-
-  const csvEscape = (val: unknown): string => {
-    const str = val == null ? '' : String(val);
-    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-      return `"${str.replace(/"/g, '""')}"`;
-    }
-    return str;
-  };
-
-  const lines: string[] = [header.join(',')];
-  for (const r of rows) {
-    lines.push([
-      r.claimId,
-      r.employee,
-      r.email,
-      r.date,
-      r.merchant,
-      r.category,
-      r.categoryCode,
-      r.description,
-      toRupees(r.amountMinor).toFixed(2),
-      r.currency,
-      toRupees(r.taxableMinor).toFixed(2),
-      toRupees(r.cgstMinor).toFixed(2),
-      toRupees(r.sgstMinor).toFixed(2),
-      toRupees(r.igstMinor).toFixed(2),
-      r.gstin ?? '',
-      r.paymentMethod,
-      r.expenseStatus,
-      r.approverName ?? '',
-      r.decidedAt?.toISOString() ?? '',
-      r.paidAt?.toISOString() ?? '',
-    ].map(csvEscape).join(','));
-  }
-
-  return lines.join('\r\n');
+export interface ExportFilters {
+  from?: string; // YYYY-MM-DD, expense date
+  to?: string;
+  /**
+   * 'approved' (default): approved lines on approved / partly approved / paid
+   *   claims — what finance books into Tally / Zoho / Xero.
+   * 'all': every line on every non-draft claim, any status.
+   */
+  scope?: ExportScope;
 }
 
+/** Column order matches CONTEXT.md §7. */
+export const CSV_HEADER = [
+  'claim_id', 'employee', 'email', 'date', 'merchant', 'category',
+  'category_code', 'description', 'amount', 'currency', 'taxable',
+  'cgst', 'sgst', 'igst', 'gstin', 'payment_method', 'status',
+  'approver', 'decided_at', 'paid_at',
+] as const;
+
+const BATCH_SIZE = 500;
+
+/**
+ * Yield the export as CSV text chunks (header first, then one chunk per batch
+ * of rows). Rows are read with keyset pagination, so memory stays flat no
+ * matter how many expenses the org has. Admins only.
+ */
+export async function* streamExpenseCSV(orgId: string, actorId: string, filters: ExportFilters = {}): AsyncGenerator<string> {
+  const [actor] = await db.select().from(users).where(eq(users.id, actorId));
+  if (!actor || actor.role !== 'admin' || actor.orgId !== orgId) {
+    throw new DomainError('Only admins can export CSV.', 'forbidden');
+  }
+
+  const scope = filters.scope ?? 'approved';
+  const approver = alias(users, 'approver');
+  const base = and(
+    eq(claims.orgId, orgId),
+    ne(claims.status, 'draft'),
+    filters.from ? gte(expenses.date, filters.from) : undefined,
+    filters.to ? lte(expenses.date, filters.to) : undefined,
+    scope === 'approved'
+      ? and(eq(expenses.status, 'approved'), inArray(claims.status, ['approved', 'partially_approved', 'paid']))
+      : undefined,
+  );
+
+  yield csvRow([...CSV_HEADER]);
+
+  let cursor: { date: string; id: string } | null = null;
+  for (;;) {
+    const rows = await db
+      .select({
+        id: expenses.id,
+        claimId: claims.id,
+        employee: users.name,
+        email: users.email,
+        date: expenses.date,
+        merchant: expenses.merchant,
+        category: categories.name,
+        categoryCode: categories.code,
+        description: expenses.description,
+        amountMinor: expenses.amountMinor,
+        currency: expenses.currency,
+        taxableMinor: expenses.taxableMinor,
+        cgstMinor: expenses.cgstMinor,
+        sgstMinor: expenses.sgstMinor,
+        igstMinor: expenses.igstMinor,
+        gstin: expenses.gstin,
+        paymentMethod: expenses.paymentMethod,
+        expenseStatus: expenses.status,
+        approverName: approver.name,
+        decidedAt: claims.decidedAt,
+        paidAt: claims.paidAt,
+      })
+      .from(expenses)
+      .innerJoin(claims, eq(expenses.claimId, claims.id))
+      .innerJoin(users, eq(claims.userId, users.id))
+      .innerJoin(categories, eq(expenses.categoryId, categories.id))
+      .leftJoin(approver, eq(claims.decidedBy, approver.id))
+      .where(and(base, cursor ? sql`(${expenses.date}, ${expenses.id}) > (${cursor.date}, ${cursor.id})` : undefined))
+      .orderBy(expenses.date, expenses.id)
+      .limit(BATCH_SIZE);
+
+    if (rows.length === 0) return;
+
+    let chunk = '';
+    for (const r of rows) {
+      chunk += csvRow([
+        csvCell(r.claimId),
+        csvCell(r.employee),
+        csvCell(r.email),
+        csvCell(r.date),
+        csvCell(r.merchant),
+        csvCell(r.category),
+        csvCell(r.categoryCode),
+        csvCell(r.description),
+        csvCell(paiseToDecimal(r.amountMinor), { numeric: true }),
+        csvCell(r.currency),
+        csvCell(paiseToDecimal(r.taxableMinor), { numeric: true }),
+        csvCell(paiseToDecimal(r.cgstMinor), { numeric: true }),
+        csvCell(paiseToDecimal(r.sgstMinor), { numeric: true }),
+        csvCell(paiseToDecimal(r.igstMinor), { numeric: true }),
+        csvCell(r.gstin ?? ''),
+        csvCell(r.paymentMethod),
+        csvCell(r.expenseStatus),
+        csvCell(r.approverName ?? ''),
+        csvCell(r.decidedAt?.toISOString() ?? ''),
+        csvCell(r.paidAt?.toISOString() ?? ''),
+      ]);
+    }
+    yield chunk;
+
+    if (rows.length < BATCH_SIZE) return;
+    const last: { date: string; id: string } = rows[rows.length - 1];
+    cursor = { date: last.date, id: last.id };
+  }
+}
+
+/** Whole export as one string (convenience for tests / small orgs). */
+export async function generateCSV(orgId: string, actorId: string, filters?: ExportFilters): Promise<string> {
+  let out = '';
+  for await (const chunk of streamExpenseCSV(orgId, actorId, filters)) out += chunk;
+  return out;
+}
