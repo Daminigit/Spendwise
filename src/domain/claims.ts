@@ -421,7 +421,7 @@ export async function updateExpense(
   userId: string,
   fields: Partial<ExpenseInputRaw & { receipt_url: string }>,
   via: AuditVia,
-): Promise<ExpenseResult> {
+): Promise<ExpenseResult & { claimId: string }> {
   const [exp] = await db.select().from(expenses).where(eq(expenses.id, expenseId));
   if (!exp) throw new DomainError('Expense not found.');
 
@@ -508,7 +508,7 @@ export async function updateExpense(
 
   await writeAudit({ orgId: claim.orgId, actorUserId: userId, actorVia: via, entity: 'expense', entityId: expenseId, action: 'update', before, after: { amount: amountMinor, categoryId, date } });
 
-  return { expenseId, flags };
+  return { expenseId, claimId: exp.claimId, flags };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -598,9 +598,32 @@ export async function decideClaim(
       await writeAudit({ orgId: claim.orgId, actorUserId: actorId, actorVia: via, entity: 'expense', entityId: exp.id, action: 'approve', before: { status: exp.status }, after: { status: 'approved', note } });
     }
   } else {
+    // Validate everything before writing anything. Every line needs a decision,
+    // otherwise the claim would leave 'submitted' half-decided and be stuck.
+    const unknown = decisions.filter((d) => !expList.some((e) => e.id === d.expenseId));
+    if (unknown.length > 0) {
+      throw new DomainError(
+        `Expense id(s) not in this claim: ${unknown.map((d) => d.expenseId).join(', ')}. Valid ids: ${expList.map((e) => e.id).join(', ')}.`,
+        'invalid',
+      );
+    }
+    const undecided = expList.filter((e) => !decisions.some((d) => d.expenseId === e.id));
+    if (undecided.length > 0) {
+      throw new DomainError(
+        `Every line needs a decision. Missing: ${undecided.map((e) => `${e.id} (${e.merchant})`).join(', ')}. Or use approve_all.`,
+        'invalid',
+      );
+    }
+    const rejectedNoNote = decisions.filter((d) => !d.approve && !d.note?.trim());
+    if (rejectedNoNote.length > 0) {
+      throw new DomainError(
+        `Add a note explaining each rejected line: ${rejectedNoNote.map((d) => d.expenseId).join(', ')}.`,
+        'invalid',
+      );
+    }
+
     for (const d of decisions) {
-      const exp = expList.find((e) => e.id === d.expenseId);
-      if (!exp) throw new DomainError(`Expense ${d.expenseId} not found in this claim.`);
+      const exp = expList.find((e) => e.id === d.expenseId)!;
       const newStatus: ExpenseStatus = d.approve ? 'approved' : 'rejected';
       await db.update(expenses)
         .set({ status: newStatus, reviewerNote: d.note ?? null, updatedAt: new Date() })

@@ -213,12 +213,12 @@ Minimal JavaScript only where needed:
 
 ### 4.1 Transport & Auth (`src/mcp/server.ts`)
 
-- [ ] Install: `@modelcontextprotocol/sdk`
-- [ ] Mount `POST /mcp/:token` in Express
-- [ ] Token lookup: `sha256(token)` → find non-revoked `mcp_tokens` row → load user
-- [ ] Use `StreamableHTTPServerTransport` in **stateless mode**
-- [ ] Update `mcp_tokens.last_used_at` on each request
-- [ ] Return `401` for invalid/revoked tokens
+- [x] Install: `@modelcontextprotocol/sdk`
+- [x] Mount `POST /mcp/:token` in Express
+- [x] Token lookup: `sha256(token)` → find non-revoked `mcp_tokens` row → load user
+- [x] Use `StreamableHTTPServerTransport` in **stateless mode**
+- [x] Update `mcp_tokens.last_used_at` on each request
+- [x] Return `401` for invalid/revoked tokens
 
 ### 4.2 MCP Tools (`src/mcp/tools/`)
 
