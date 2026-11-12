@@ -45,7 +45,7 @@ npm run seed                       # demo org (npm run seed -- --reset to recrea
 npm run dev                        # http://localhost:3000
 ```
 
-Receipts are stored in `./uploads/` unless `S3_*` is configured.
+Receipts are stored in the database by default (table `receipt_files`), so one Postgres is all you need, locally and deployed.
 
 Environment files: `.env.local` is loaded first, then `.env` (both git-ignored; real environment variables win). `neon deploy`, or pasting your Neon URLs, goes in `.env.local`. Tests never read these files except for `TEST_DATABASE_URL`, and refuse to run if it points at the same database as `DATABASE_URL`.
 
@@ -73,8 +73,9 @@ Put Neon's pooled connection string in `DATABASE_URL` and the direct one (host w
 | `DATABASE_URL_UNPOOLED` | no | Direct connection for migrations (on Neon: same URL without `-pooler`) |
 | `SESSION_SECRET` | yes | Long random string (`openssl rand -hex 32`); also signs invite links |
 | `APP_URL` | no | Public URL, no trailing slash. Defaults to `RENDER_EXTERNAL_URL` on Render, else `http://localhost:$PORT` |
-| `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_REGION` | no | Private S3-compatible bucket (Cloudflare R2) for receipts; local disk if unset |
-| `UPLOADS_DIR` | no | Local receipt directory (default `./uploads`) |
+| `RECEIPT_STORAGE` | no | `database` (default) or `disk` |
+| `UPLOADS_DIR` | no | Receipt directory when `RECEIPT_STORAGE=disk` (default `./uploads`) |
+| `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_REGION` | no | Optional: a private S3-compatible bucket (e.g. Cloudflare R2); overrides `RECEIPT_STORAGE` when set |
 | `SEED_DEMO` | no | `true` seeds the demo org on boot if it doesn't exist |
 | `DEMO_MCP_TOKEN` | no | Fixed demo connector token for Riya |
 | `PORT` | no | Default 3000 |
@@ -87,14 +88,14 @@ Put Neon's pooled connection string in `DATABASE_URL` and the direct one (host w
 Claude ──MCP (POST /mcp/<token>)──┐
                                   ├─► src/domain/*  ──► Postgres (Drizzle)
 Browser ──HTML forms / sessions───┘        │
-                                           └─► receipts: local disk or private R2
+                                           └─► receipts: Postgres (default), disk or private R2
 ```
 
 - **One domain layer.** All business rules and permission checks live in `src/domain/`. The web routes (`src/web/routes/`) and the MCP tools (`src/mcp/tools/`) are thin wrappers, so Claude and people always get the same behaviour.
 - **Money** is stored as integer paise; tools accept and return rupees.
 - **Rule checks** add flags but never block a claim: `OVER_ITEM_LIMIT`, `OVER_DAY_LIMIT`, `MISSING_RECEIPT` (on submit), `MISSING_GSTIN`, `INVALID_GSTIN` (format + checksum), `GST_MISMATCH`, `WEEKEND`, `OUTSIDE_TRIP`, `POSSIBLE_DUPLICATE`.
 - **Audit log.** Every change records who did it, before/after, and whether it came from `web` or `mcp`.
-- **Receipts** are served only through `GET /receipts/<file>` after checking the viewer can see the claim, so the bucket stays private.
+- **Receipts** are stored in Postgres by default and served only through `GET /receipts/<file>` after checking the viewer can see the claim (an optional R2 bucket can stay private for the same reason).
 
 ### MCP tools
 
@@ -142,13 +143,17 @@ CI (`.github/workflows/ci.yml`) runs the no-AI guard, type-check, lint, build, a
 
 ---
 
-## Deploy (Render + Cloudflare R2)
+## Deploy (Render + one Neon database)
 
-1. **Receipts bucket (recommended).** In Cloudflare → R2, create a bucket (e.g. `spendwise-receipts`), leave public access **off**, and create an R2 API token with *Object Read & Write* on that bucket. Note the S3 endpoint (`https://<account-id>.r2.cloudflarestorage.com`), access key and secret.
-2. **Render.** New → **Blueprint** → select this repo. `render.yaml` creates the web service and a Postgres database in Singapore. When prompted, fill in the `S3_*` values (and optionally `DEMO_MCP_TOKEN` / `APP_URL`).
-3. First boot applies migrations and, with `SEED_DEMO=true`, seeds the demo org. The connector URL is printed in the deploy logs (or derive it from `DEMO_MCP_TOKEN`).
+One Neon database serves both your local copy and the deployed app (same connection string), and it also stores the receipt images, so there is no other service to set up.
 
-Free-plan caveats: the web service sleeps when idle (first request takes ~1 min), the free Postgres expires after 30 days, and without R2 uploaded receipts are lost on every restart.
+1. **Neon.** From the Neon console, copy the **pooled** connection string (host contains `-pooler`) and the **direct** one (same, without `-pooler`).
+2. **Render.** New → **Blueprint** → select this repo. `render.yaml` creates only the web service (Singapore, next to Neon `ap-southeast-1`). When prompted, paste the pooled URL as `DATABASE_URL` and the direct URL as `DATABASE_URL_UNPOOLED`; optionally set `DEMO_MCP_TOKEN` / `APP_URL`.
+3. First boot applies migrations and, with `SEED_DEMO=true`, seeds the demo org if it isn't there yet. The connector URL is printed in the deploy logs (or derive it from `DEMO_MCP_TOKEN`).
+
+Because local and deployed share the database, data you create locally appears on the deployed app and vice versa. Keep integration tests on a separate `TEST_DATABASE_URL` (they refuse to run against the app's database).
+
+Free-plan caveats: the Render service sleeps when idle (the first request takes ~1 min), and Neon's free tier suspends the database when idle (a second or two on wake). Receipts are capped at 10 MB each.
 
 A `Dockerfile` is included for other hosts. It runs as a non-root user, has a health check, and migrates on start.
 

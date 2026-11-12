@@ -8,6 +8,7 @@ import {
   openReceipt,
   uploadReceipt,
   UnsupportedFileError,
+  storageBackend,
 } from '../../src/storage/index.js';
 
 const pad = (b: Buffer) => Buffer.concat([b, Buffer.alloc(32)]);
@@ -43,11 +44,12 @@ describe('isValidReceiptName', () => {
 
 describe('local disk storage', () => {
   let dir: string;
-  const prev = { endpoint: process.env.S3_ENDPOINT, uploads: process.env.UPLOADS_DIR };
+  const prev = { endpoint: process.env.S3_ENDPOINT, uploads: process.env.UPLOADS_DIR, backend: process.env.RECEIPT_STORAGE };
 
   beforeAll(async () => {
     dir = await mkdtemp(path.join(tmpdir(), 'spendwise-uploads-'));
     delete process.env.S3_ENDPOINT;
+    process.env.RECEIPT_STORAGE = 'disk';
     process.env.UPLOADS_DIR = dir;
   });
   afterAll(async () => {
@@ -55,6 +57,8 @@ describe('local disk storage', () => {
     if (prev.endpoint !== undefined) process.env.S3_ENDPOINT = prev.endpoint;
     if (prev.uploads !== undefined) process.env.UPLOADS_DIR = prev.uploads;
     else delete process.env.UPLOADS_DIR;
+    if (prev.backend !== undefined) process.env.RECEIPT_STORAGE = prev.backend;
+    else delete process.env.RECEIPT_STORAGE;
   });
 
   it('stores a receipt and returns an app path, not a public URL', async () => {
@@ -78,5 +82,34 @@ describe('local disk storage', () => {
 
   it('refuses unsupported bytes', async () => {
     await expect(uploadReceipt(pad(Buffer.from('hello world')))).rejects.toBeInstanceOf(UnsupportedFileError);
+  });
+});
+
+describe('storageBackend', () => {
+  const saved = { s3: process.env.S3_ENDPOINT, mode: process.env.RECEIPT_STORAGE };
+  afterAll(() => {
+    if (saved.s3 === undefined) delete process.env.S3_ENDPOINT;
+    else process.env.S3_ENDPOINT = saved.s3;
+    if (saved.mode === undefined) delete process.env.RECEIPT_STORAGE;
+    else process.env.RECEIPT_STORAGE = saved.mode;
+  });
+
+  it('defaults to the database', () => {
+    delete process.env.S3_ENDPOINT;
+    delete process.env.RECEIPT_STORAGE;
+    expect(storageBackend()).toBe('database');
+  });
+  it('uses disk when asked', () => {
+    process.env.RECEIPT_STORAGE = 'disk';
+    expect(storageBackend()).toBe('disk');
+  });
+  it('prefers S3 whenever an endpoint is configured', () => {
+    process.env.S3_ENDPOINT = 'https://example.r2.cloudflarestorage.com';
+    expect(storageBackend()).toBe('s3');
+    delete process.env.S3_ENDPOINT;
+  });
+  it('rejects an unknown mode with a clear message', () => {
+    process.env.RECEIPT_STORAGE = 'cloud';
+    expect(() => storageBackend()).toThrow(/RECEIPT_STORAGE must be "database" or "disk"/);
   });
 });

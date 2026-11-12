@@ -15,7 +15,8 @@ import { resolveTestDatabaseUrl } from './test-db-url.js';
 process.env.NODE_ENV = 'test';
 process.env.SESSION_SECRET ??= 'test-session-secret-not-for-production';
 process.env.APP_URL = 'http://spendwise.test';
-delete process.env.S3_ENDPOINT; // receipts go to a temp dir in tests
+delete process.env.S3_ENDPOINT; // never a real bucket in tests
+delete process.env.RECEIPT_STORAGE; // default backend (Postgres) unless a test opts into disk
 process.env.UPLOADS_DIR = mkdtempSync(path.join(tmpdir(), 'spendwise-test-uploads-'));
 
 // Decided once, here, before any app module (and src/env.ts) is imported

@@ -6,9 +6,11 @@
  * (`/receipts/<uuid>.<ext>`) and the app checks claim access before streaming
  * the file (see src/web/routes/receipts.ts).
  *
- * - Dev  (S3_ENDPOINT not set): files live in ./uploads/ on local disk.
- * - Prod (S3_ENDPOINT set):     files live in a private S3-compatible bucket
- *                               (Cloudflare R2) under `receipts/`.
+ * Backends (first match wins):
+ * - S3_ENDPOINT set          → private S3-compatible bucket (Cloudflare R2), `receipts/` prefix
+ * - RECEIPT_STORAGE=disk     → ./uploads/ (or UPLOADS_DIR) on local disk
+ * - otherwise (default)      → the `receipt_files` table in Postgres, so a deployment
+ *                              needs only its database and survives restarts
  */
 
 import { randomUUID } from 'crypto';
@@ -17,6 +19,9 @@ import { mkdir, stat, writeFile } from 'fs/promises';
 import path from 'path';
 import { Readable } from 'stream';
 import type { S3Client } from '@aws-sdk/client-s3';
+import { eq, inArray } from 'drizzle-orm';
+import { db } from '../db/index.js';
+import { receiptFiles } from '../db/schema.js';
 
 // ── File type detection (magic bytes — never trust the client's mime type) ───
 
@@ -63,13 +68,19 @@ export function receiptUrlFor(name: string): string {
 
 // ── Backend selection ─────────────────────────────────────────────────────────
 
-function usingS3(): boolean {
-  return Boolean(process.env.S3_ENDPOINT);
+export type StorageBackend = 's3' | 'disk' | 'database';
+
+export function storageBackend(): StorageBackend {
+  if (process.env.S3_ENDPOINT) return 's3';
+  const v = (process.env.RECEIPT_STORAGE || 'database').trim().toLowerCase();
+  if (v === 'disk') return 'disk';
+  if (v === 'database' || v === 'db') return 'database';
+  throw new Error(`RECEIPT_STORAGE must be "database" or "disk" (got "${v}").`);
 }
 
-/** Fail fast at startup if S3 is half-configured. */
+/** Fail fast at startup if storage is misconfigured. */
 export function assertStorageConfig(): void {
-  if (!usingS3()) return;
+  if (storageBackend() !== 's3') return;
   const missing = ['S3_BUCKET', 'S3_ACCESS_KEY', 'S3_SECRET_KEY'].filter((k) => !process.env[k]);
   if (missing.length) {
     throw new Error(`S3_ENDPOINT is set but ${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} missing.`);
@@ -117,7 +128,10 @@ export async function uploadReceipt(buffer: Buffer): Promise<UploadResult> {
 
   const name = `${randomUUID()}${type.ext}`;
 
-  if (usingS3()) {
+  const backend = storageBackend();
+  if (backend === 'database') {
+    await db.insert(receiptFiles).values({ name, contentType: type.mime, sizeBytes: buffer.length, data: buffer });
+  } else if (backend === 's3') {
     const { PutObjectCommand } = await import('@aws-sdk/client-s3');
     await (await s3()).send(
       new PutObjectCommand({
@@ -147,7 +161,14 @@ export async function openReceipt(name: string): Promise<ReceiptFile | null> {
   if (!isValidReceiptName(name)) return null;
   const contentType = MIME_BY_EXT[path.extname(name)];
 
-  if (usingS3()) {
+  const backend = storageBackend();
+  if (backend === 'database') {
+    const [row] = await db.select().from(receiptFiles).where(eq(receiptFiles.name, name));
+    if (!row) return null;
+    return { body: Readable.from([row.data]), contentType: row.contentType, size: row.sizeBytes };
+  }
+
+  if (backend === 's3') {
     const { GetObjectCommand, NoSuchKey } = await import('@aws-sdk/client-s3');
     try {
       const out = await (await s3()).send(new GetObjectCommand({ Bucket: process.env.S3_BUCKET!, Key: s3Key(name) }));
@@ -167,4 +188,14 @@ export async function openReceipt(name: string): Promise<ReceiptFile | null> {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw err;
   }
+}
+
+/**
+ * Delete stored receipts by name (used when the demo seed is reset).
+ * Only the database backend is cleaned up; disk/S3 files are left as orphans.
+ */
+export async function deleteReceipts(names: string[]): Promise<void> {
+  const valid = names.filter(isValidReceiptName);
+  if (valid.length === 0 || storageBackend() !== 'database') return;
+  await db.delete(receiptFiles).where(inArray(receiptFiles.name, valid));
 }

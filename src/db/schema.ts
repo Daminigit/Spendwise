@@ -8,6 +8,7 @@ import {
   uniqueIndex,
   index,
   numeric,
+  customType,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
@@ -225,6 +226,22 @@ export const auditLog = pgTable(
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
+// receipt_files  (receipt bytes stored in Postgres — the default storage backend,
+// so a demo deployment needs nothing but one database)
+// ─────────────────────────────────────────────────────────────────────────────
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => 'bytea',
+});
+
+export const receiptFiles = pgTable('receipt_files', {
+  name: text('name').primaryKey(), // <uuid>.<ext>, same as in expenses.receipt_url
+  contentType: text('content_type').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  data: bytea('data').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Relations (for Drizzle query API)
 // ─────────────────────────────────────────────────────────────────────────────
 export const organisationsRelations = relations(organisations, ({ many, one }) => ({
@@ -311,3 +328,5 @@ export type NewComment = typeof comments.$inferInsert;
 export type AuditLog = typeof auditLog.$inferSelect;
 export type NewAuditLog = typeof auditLog.$inferInsert;
 export type AuditVia = 'web' | 'mcp';
+
+export type ReceiptFile = typeof receiptFiles.$inferSelect;

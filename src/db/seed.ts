@@ -27,7 +27,7 @@ import { createClaim, decideClaim, markPaid, submitClaim, updateExpense, type Ex
 import { DEFAULT_CATEGORIES } from '../domain/org.js';
 import { connectorUrl, hashToken } from '../domain/tokens.js';
 import { validateGSTIN } from '../domain/gstin.js';
-import { uploadReceipt } from '../storage/index.js';
+import { deleteReceipts, uploadReceipt } from '../storage/index.js';
 
 export const DEMO_ORG_NAME = 'Acme Travel Pvt Ltd';
 export const DEMO_PASSWORD = 'demo1234';
@@ -334,6 +334,12 @@ export async function seedDemo(opts: SeedOptions = {}): Promise<SeedResult | nul
     }
     // Claims first (cascades to expenses + comments): expenses reference
     // categories and claims reference users without ON DELETE CASCADE.
+    const receiptRows = await db
+      .select({ url: expenses.receiptUrl })
+      .from(expenses)
+      .innerJoin(claims, eq(expenses.claimId, claims.id))
+      .where(eq(claims.orgId, existing));
+    await deleteReceipts(receiptRows.map((r) => r.url?.split('/').pop() ?? '').filter(Boolean));
     await db.transaction(async (tx) => {
       await tx.delete(claims).where(eq(claims.orgId, existing));
       // Then the org cascades to users, tokens, policy, categories, audit log

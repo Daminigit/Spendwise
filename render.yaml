@@ -1,11 +1,12 @@
 # Render Blueprint — https://render.com/docs/blueprint-spec
-# New → Blueprint → pick this repo. Creates the web service + Postgres.
+# New → Blueprint → pick this repo. Creates the web service only: the database
+# is your single Neon Postgres (same one you use locally), entered when prompted.
 services:
   - type: web
     name: spendwise
     runtime: node
     plan: free
-    region: singapore # must match the database region
+    region: singapore # closest to Neon ap-southeast-1
     # NODE_ENV=production makes `npm ci` skip devDependencies, but the build
     # needs TypeScript, so include them explicitly.
     buildCommand: npm ci --include=dev && npm run build
@@ -17,12 +18,18 @@ services:
         value: '22'
       - key: NODE_ENV
         value: production
+      # Neon pooled connection string (host contains "-pooler"). Prompted once; never committed.
       - key: DATABASE_URL
-        fromDatabase:
-          name: spendwise-db
-          property: connectionString
+        sync: false
+      # Neon direct connection string (same, without "-pooler"), used for migrations.
+      - key: DATABASE_URL_UNPOOLED
+        sync: false
       - key: SESSION_SECRET
         generateValue: true
+      # Receipts are stored in Postgres, so uploads survive restarts and deploys
+      # on the free plan (whose disk is wiped) with no extra storage service.
+      - key: RECEIPT_STORAGE
+        value: database
       # Optional: APP_URL. If unset, Render's RENDER_EXTERNAL_URL is used, which
       # is right unless you add a custom domain.
       - key: APP_URL
@@ -34,20 +41,3 @@ services:
       # README can show a stable URL. Leave empty for a random one (see logs).
       - key: DEMO_MCP_TOKEN
         sync: false
-      # Receipt storage (Cloudflare R2). Without these, receipts go to the
-      # instance's local disk, which Render wipes on every deploy/restart.
-      - key: S3_ENDPOINT
-        sync: false
-      - key: S3_BUCKET
-        sync: false
-      - key: S3_ACCESS_KEY
-        sync: false
-      - key: S3_SECRET_KEY
-        sync: false
-      - key: S3_REGION
-        value: auto
-
-databases:
-  - name: spendwise-db
-    plan: free
-    region: singapore
