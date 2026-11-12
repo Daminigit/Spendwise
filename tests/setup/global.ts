@@ -2,8 +2,10 @@
  * Vitest globalSetup: apply migrations to the test database once per run.
  */
 
+import { resolveTestDatabaseUrl } from './test-db-url.js';
+
 export default async function setup() {
-  const url = process.env.TEST_DATABASE_URL;
+  const url = resolveTestDatabaseUrl();
   if (!url) {
     console.log('\nTEST_DATABASE_URL not set: integration tests will be skipped.\n');
     return;

@@ -7,7 +7,7 @@
  *   - 'postgres' (default) → postgres driver pointing at DATABASE_URL
  */
 
-import 'dotenv/config';
+import '../env.js';
 import { drizzle as drizzlePg } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from './schema.js';
@@ -17,9 +17,12 @@ const driver = process.env.DB_DRIVER ?? 'postgres';
 function createPostgresDb() {
   const url = process.env.DATABASE_URL;
   if (!url) {
-    throw new Error('DATABASE_URL is not set. Add it to your .env file.');
+    throw new Error('DATABASE_URL is not set. Add it to .env.local (e.g. via `neon deploy`) or .env.');
   }
-  const client = postgres(url, { max: 10 });
+  // Neon's pooled endpoint (host contains "-pooler") is PgBouncer in transaction
+  // mode: don't rely on named prepared statements surviving between queries.
+  const pooled = /-pooler\./.test(url);
+  const client = postgres(url, { max: 10, prepare: !pooled, onnotice: () => {} });
   return drizzlePg(client, { schema });
 }
 

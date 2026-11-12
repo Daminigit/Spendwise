@@ -11,7 +11,7 @@
  * which is how the free Render plan (no shell access) gets its demo data.
  */
 
-import 'dotenv/config';
+import '../env.js';
 import path from 'path';
 import { pathToFileURL } from 'url';
 import postgres from 'postgres';
@@ -20,7 +20,8 @@ import { migrate } from 'drizzle-orm/postgres-js/migrator';
 
 export const MIGRATIONS_DIR = path.resolve('src/db/migrations');
 
-export async function runMigrations(url = process.env.DATABASE_URL): Promise<void> {
+/** Migrations prefer the direct (unpooled) connection when one is configured, e.g. on Neon. */
+export async function runMigrations(url = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL): Promise<void> {
   if (!url) throw new Error('DATABASE_URL is not set.');
   const client = postgres(url, { max: 1, onnotice: () => {} });
   try {

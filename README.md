@@ -47,6 +47,12 @@ npm run dev                        # http://localhost:3000
 
 Receipts are stored in `./uploads/` unless `S3_*` is configured.
 
+Environment files: `.env.local` is loaded first, then `.env` (both git-ignored; real environment variables win). `neon deploy`, or pasting your Neon URLs, goes in `.env.local`. Tests never read these files except for `TEST_DATABASE_URL`, and refuse to run if it points at the same database as `DATABASE_URL`.
+
+### Using Neon
+
+Put Neon's pooled connection string in `DATABASE_URL` and the direct one (host without `-pooler`) in `DATABASE_URL_UNPOOLED`, then `npm run migrate`. On Render, replace the `fromDatabase` entry for `DATABASE_URL` in `render.yaml` with your Neon URL (and drop the `databases:` block).
+
 ### Scripts
 
 | Script | What it does |
@@ -63,7 +69,8 @@ Receipts are stored in `./uploads/` unless `S3_*` is configured.
 
 | Variable | Required | Notes |
 |---|---|---|
-| `DATABASE_URL` | yes | Postgres connection string |
+| `DATABASE_URL` | yes | Postgres connection string (on Neon: the pooled `-pooler` URL) |
+| `DATABASE_URL_UNPOOLED` | no | Direct connection for migrations (on Neon: same URL without `-pooler`) |
 | `SESSION_SECRET` | yes | Long random string (`openssl rand -hex 32`); also signs invite links |
 | `APP_URL` | no | Public URL, no trailing slash. Defaults to `RENDER_EXTERNAL_URL` on Render, else `http://localhost:$PORT` |
 | `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_REGION` | no | Private S3-compatible bucket (Cloudflare R2) for receipts; local disk if unset |

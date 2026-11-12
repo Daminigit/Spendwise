@@ -4,7 +4,7 @@
  * Entry point: builds the app and starts listening.
  */
 
-import 'dotenv/config';
+import './env.js';
 import { createApp } from './web/app.js';
 import { appUrl } from './config.js';
 

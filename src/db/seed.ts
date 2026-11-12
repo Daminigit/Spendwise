@@ -16,7 +16,7 @@
  * Set DEMO_MCP_TOKEN (sw_… , 24+ chars) to get a stable connector URL for docs.
  */
 
-import 'dotenv/config';
+import '../env.js';
 import { randomUUID } from 'crypto';
 import { pathToFileURL } from 'url';
 import { and, eq, inArray, sql } from 'drizzle-orm';

@@ -49,11 +49,20 @@ declare global {
   }
 }
 
+/**
+ * node-postgres currently treats sslmode=require/prefer/verify-ca as verify-full
+ * (full certificate check) and warns on every start that this will change.
+ * Ask for verify-full explicitly: same behaviour today, stays strict later.
+ */
+export function pgConnectionString(url: string): string {
+  return url.replace(/([?&]sslmode=)(require|prefer|verify-ca)(?=&|$)/, '$1verify-full');
+}
+
 function createStore(): session.Store | undefined {
   if (process.env.NODE_ENV === 'test' || !process.env.DATABASE_URL) return undefined;
   const PgStore = connectPgSimple(session);
   return new PgStore({
-    conString: process.env.DATABASE_URL,
+    conString: pgConnectionString(process.env.DATABASE_URL),
     tableName: 'user_sessions',
     createTableIfMissing: true,
   });

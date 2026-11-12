@@ -1,9 +1,10 @@
 import { defineConfig } from 'drizzle-kit';
 import { config } from 'dotenv';
 
-config();
+config({ path: ['.env.local', '.env'], quiet: true });
 
-const url = process.env.DATABASE_URL ?? '';
+// drizzle-kit needs a direct connection; prefer Neon's unpooled URL when present
+const url = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL || '';
 const driver = process.env.DB_DRIVER ?? 'postgres';
 
 export default defineConfig(
